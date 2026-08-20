@@ -33,6 +33,8 @@ anti-slop-go/
   justification comment contract below, and the signature tests that
   G03 and G04 share. One implementation of a contract cannot drift from
   itself.
+- `internal/pathmatch` holds the package path patterns that the
+  settings use. The Configuration section states their syntax.
 - Tests use `analysistest` with `testdata` packages. Every rule ships
   with accepted and rejected fixtures before it merges.
 
@@ -50,19 +52,61 @@ Three consumption paths, in order of priority:
 
 ## Configuration
 
-The settings block is the configuration surface of the plugin.
-golangci-lint gives the block to `New` through
-`register.DecodeSettings`, and it never sets `analysis.Analyzer.Flags`.
-`BuildAnalyzers` translates the decoded settings into the analyzer set
-it returns.
+A rule that reads a setting takes it in two ways, because the three
+consumption paths differ.
 
-The standalone `cmd/antislop` binary and the `go vet -vettool` path
-read no configuration file. They configure through analyzer flags, once
-a rule has a flag. The plugin then sets the same flags from its
-settings, so one parser serves both paths.
+**A constructor**, for a program that holds Go values. A configurable
+rule exports `New`, which takes the setting and returns a new
+`*analysis.Analyzer`. The package-level `Analyzer` value is `New` with
+no setting. Every instance carries its own configuration, so two
+callers never share one.
+
+**A flag**, for `cmd/antislop` and for `go vet -vettool`. Both paths
+read no configuration file. `New` registers the flag of the rule on the
+instance it builds, and the flag writes into the configuration of that
+instance. `-noreflect.allow` is the first such flag, and the
+multichecker registers it because it registers the analyzer.
+
+The settings block is the configuration surface of the plugin.
+golangci-lint gives the block to `New` of the plugin through
+`register.DecodeSettings`, and it never sets `analysis.Analyzer.Flags`,
+so a flag has no route in from a `.golangci.yml` file. `BuildAnalyzers`
+therefore calls the constructor of each configurable rule with the
+decoded setting, and it returns the instances it built. It never writes
+to the package-level analyzer values, which every consumer of the
+module shares.
 
 The decoder rejects an unknown key. A key therefore appears in the
 settings only when a rule reads it, and a key that ships stays.
+
+### Package path patterns
+
+Every setting that names packages takes path patterns, and
+`internal/pathmatch` holds the one implementation of them. A pattern
+reads against the import path of the package:
+
+- A pattern matches the whole path. A pattern is therefore no prefix,
+  no infix, and no suffix of a longer path: `codec` matches the package
+  whose path is `codec`, and never `example.com/app/codec`.
+- `*` matches any run of characters that holds no slash. The run may be
+  empty. `*/internal/codec` matches `app/internal/codec`, and it does
+  not match `example.com/app/internal/codec`.
+- `...` matches any run of characters, slashes included. The run may be
+  empty. `.../internal/codec` matches both paths above.
+- A pattern that ends in `/...` matches the package above that suffix
+  as well, which is the rule of the go command. `example.com/app/...`
+  matches `example.com/app` and every package under it.
+- Every other character matches itself. The dot of a domain name is a
+  dot and no wildcard.
+
+A rule drops a trailing `_test` from the path before it reads the
+patterns, so one entry covers a package and its external test package.
+An entry therefore names the production package path. An entry that
+names an external test package, such as `example.com/app/codec_test`,
+matches nothing and reports no error, because no path reaches the
+comparison with that suffix. An entry that names a production package
+also allows a real package that lives in a directory named `foo_test`.
+002 states both directions with the rule that needs them.
 
 ```yaml
 # .golangci.yml (module plugin form)
@@ -74,10 +118,10 @@ linters:
         type: module
         settings:
           boundary-packages:        # G06: decode boundaries
-            - "*/internal/ingest"
-            - "*/api"
+            - ".../internal/ingest"
+            - "example.com/app/api/..."
           reflect-allow:            # G07
-            - "*/internal/codec"
+            - "example.com/app/internal/codec"
           disable:
             - noerrorassert         # when staticcheck covers it
           enable:
