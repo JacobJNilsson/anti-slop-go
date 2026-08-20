@@ -58,8 +58,13 @@ The rule flags untyped maps in:
 - struct fields,
 - package-level variable declarations.
 
-The rule does not flag local variables inside a decode function that
-the configuration allowlists (see 003).
+The rule never flags a local variable. A decode function keeps its
+untyped map inside the function body, and the configuration needs no
+allowlist for it.
+
+The rule skips generated files, which `go/ast` recognises by the
+`Code generated ... DO NOT EDIT.` header. A program writes the file, so
+a diagnostic there has no reader who can act on it.
 
 Rejected:
 

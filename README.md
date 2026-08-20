@@ -8,8 +8,8 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Specification phase. No analyzers exist yet.
-Read the specification in [`docs/spec`](docs/spec):
+Implementation phase. The first analyzer, `nountypedmap` (rule G02),
+is available. Read the specification in [`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
 2. [Rules](docs/spec/002-rules.md): the rule catalogue with examples.

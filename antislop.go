@@ -5,6 +5,7 @@ package antislop
 import (
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/nountypedmap"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/safetyassert"
 )
 
@@ -14,5 +15,6 @@ import (
 func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
 		safetyassert.Analyzer, // G01
+		nountypedmap.Analyzer, // G02
 	}
 }
