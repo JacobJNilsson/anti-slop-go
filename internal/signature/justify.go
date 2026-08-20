@@ -14,8 +14,19 @@ import (
 // follows the justification comment contract of
 // docs/spec/003-implementation.md, and it is the only place that states
 // the contract: every rule with a marker gets its expression here.
+//
+// The marker must start a line of the comment text, on any line of the
+// group. A word boundary alone accepted "NOT-SAFETY:" and a marker in
+// the middle of a sentence. A hyphen and a space are both word
+// boundaries.
+//
+// The input is the text of ast.CommentGroup.Text. That method removes
+// the comment markers and the first space of a line comment. It keeps
+// the rest of the leading text of a line. A block comment may start
+// with a space, and a gutter of stars stays, so the class before the
+// name accepts both.
 func markerExpr(name string) *regexp.Regexp {
-	return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*:`)
+	return regexp.MustCompile(`(?m)^[\s*]*` + regexp.QuoteMeta(name) + `\s*:`)
 }
 
 // Justifications answers, for one analysis pass, whether the author
