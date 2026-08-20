@@ -51,6 +51,10 @@ packages should sit at 100% regardless of the bar.
   the reasoning.
 - One analyzer per package under `analyzers/<name>/`, registered in
   `antislop.go`, tested with `analysistest` against `testdata/src/` fixtures.
+- Write the tests first. Author the fixtures and their `want` expectations
+  before the analyzer, run them to see them fail, then implement until they
+  pass. A test written after the code tends to describe what the code
+  happens to do, not what the rule requires.
 - Every rule ships with accepted AND rejected fixtures before it merges.
 - Fixture code under `testdata/` is deliberately bad; keep it out of lint and
   coverage scopes (already configured).
