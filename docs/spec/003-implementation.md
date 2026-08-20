@@ -18,6 +18,7 @@ anti-slop-go/
   antislop.go        // exported list of all analyzers
   cmd/antislop/      // multichecker binary
   plugin/            // golangci-lint module plugin entry point
+  internal/          // machinery that more than one rule needs
   docs/spec/
 ```
 
@@ -27,6 +28,11 @@ anti-slop-go/
 - `plugin` holds the `register.Plugin` call. It stands apart, so a
   consumer of `cmd/antislop` or of `Analyzers()` never compiles the
   golangci-lint dependency.
+- `internal/signature` holds the machinery that more than one rule
+  needs: the generated-file test that every rule applies, the
+  justification comment contract below, and the signature tests that
+  G03 and G04 share. One implementation of a contract cannot drift from
+  itself.
 - Tests use `analysistest` with `testdata` packages. Every rule ships
   with accepted and rejected fixtures before it merges.
 

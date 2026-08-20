@@ -7,12 +7,13 @@ package noerrorassert
 
 import (
 	"go/ast"
-	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
 const doc = `reject a type assertion on an error
@@ -85,12 +86,12 @@ func run(pass *analysis.Pass) (any, error) {
 	// supplies its result, and that result is an *inspector.Inspector.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	generated := generatedFiles(pass)
+	generated := signature.GeneratedFiles(pass)
 
 	insp.Preorder([]ast.Node{(*ast.TypeAssertExpr)(nil)}, func(n ast.Node) {
 		// SAFETY: the node filter above admits this type only.
 		assert := n.(*ast.TypeAssertExpr)
-		if generated[pass.Fset.File(assert.Pos())] {
+		if generated(assert.Pos()) {
 			return
 		}
 		if !isError(pass.TypesInfo.TypeOf(assert.X)) {
@@ -145,21 +146,4 @@ func namesInterface(t types.Type) bool {
 		return false
 	}
 	return types.IsInterface(t)
-}
-
-// generatedFiles returns the generated files of the pass. The rule
-// states the shape of hand-written code, so a report against a file
-// that a program writes has no reader who can act on it.
-//
-// The set holds each token.File itself, not its name. A //line
-// directive changes the name that token.Position reports, so a
-// comparison of names can exempt the wrong file in both directions.
-func generatedFiles(pass *analysis.Pass) map[*token.File]bool {
-	files := make(map[*token.File]bool)
-	for _, f := range pass.Files {
-		if ast.IsGenerated(f) {
-			files[pass.Fset.File(f.FileStart)] = true
-		}
-	}
-	return files
 }
