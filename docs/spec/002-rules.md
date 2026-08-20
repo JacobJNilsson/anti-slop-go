@@ -357,14 +357,6 @@ A test must not rewire production code through mutable globals.
 The seam belongs in the design: accept an interface or a function
 value as a dependency.
 
-The rule flags, in `_test.go` files:
-
-- assignment to a package-level function variable declared outside the
-  test file,
-- imports of runtime-patching libraries (`bou.ke/monkey` and
-  equivalents),
-- `//go:linkname` directives.
-
 Rejected:
 
 ```go
@@ -382,6 +374,143 @@ type Clock interface{ Now() time.Time }
 
 func NewServer(c Clock) *Server
 ```
+
+### What the rule reads
+
+The rule reads test files. A test file is a file whose name ends in
+`_test.go`. The name of the file is the whole test. The name of the
+package answers another question. The rule reads the external test
+package `a_test` and the test files that sit in package `a` the same
+way.
+
+The rule reports three shapes in a test file.
+
+**An assignment that rewires behaviour of a package-level variable.**
+Behaviour is a function value or an interface. A variable of an
+interface type holds an implementation, and an assignment gives the
+package another one. A defined type, such as `type Hook func()`,
+carries the behaviour of the type it names. A variable of another
+type, such as an integer field, holds data and gets no report.
+
+The target reaches the variable through a field, an index, or a
+pointer. `Options.Now`, `Registry["boot"]`, `Chain[0]`, and
+`*Fallback` are reports where the name at the root of the target is a
+package-level variable. The root carries the ownership, and the target
+carries the type.
+
+The variable belongs to the package under test, or to any package that
+the test imports. Both are reports. An assignment to a variable of
+another package is worse, because the owner of that code cannot see
+the change.
+
+The rule reads the assignment statement, which is `*ast.AssignStmt` in
+the syntax tree. Each target of a multiple assignment gets its own
+report. The rule reads a range clause that assigns with `=` as well,
+because such a clause writes to a variable that another statement
+declares. A clause with `:=` declares its own variables, so it stays
+clean.
+
+**An import of a runtime patching library.** The rule reports the
+import itself, because the import is the decision. The list of
+libraries is fixed in the analyzer: `bou.ke/monkey` and
+`github.com/agiledragon/gomonkey`. An entry matches the path itself
+and every directory under it, so a version path such as
+`github.com/agiledragon/gomonkey/v2` matches. A path that only starts
+with the same letters is another library. The list takes no
+configuration yet. A project that needs another entry files an issue,
+and every project then gets the entry.
+
+**A `//go:linkname` directive.** A directive carries no space between
+the slashes and the name, and a space or a tab follows the name. The
+rule reports the comment. A comment with another name, such as
+`//go:linknamex`, is another directive.
+
+### What the rule leaves alone
+
+- **A variable that a test file declares.** The rule reads the file of
+  the declaration, not the file of the assignment. Such a variable is
+  test infrastructure, and the test files of the package own it, its
+  entries included. Another test file of the same package may assign
+  to it, and an external test package may assign to an exported one.
+  Only a variable that no test file declares carries production
+  behaviour.
+- **An assignment in a file that is no test file.** Production code
+  that rewires its own package-level variable is another question, and
+  this rule does not answer it.
+- **A field, an entry, or an element of a value that the test owns.**
+  A local struct, a map that the test builds, and a slice that the
+  test builds are all seams that the design offers. A test that fills
+  one of them uses the design, which is the fix this rule asks for.
+  The rule reads the root of the target, so a field of a
+  package-level struct is production state and gets a report.
+- **A local variable**, which includes a short declaration that hides
+  a package-level name. The variable belongs to the test.
+- **A target under a call**, such as `*addressOf(&now) = f`. The rule
+  follows no call, so such a target reaches no variable it can name.
+  A helper of the test that takes a pointer and assigns through it
+  hides the patch from this rule in the same way.
+- **A `//go:linkname` directive in a file that is no test file.** Such
+  a directive is systems programming, such as a runtime shim or a cgo
+  shim. The rule cannot judge it, and the blast radius of a wrong
+  report there is large. The narrow rule reports the test files, where
+  the directive is a patch.
+- **Generated files**, which `go/ast` recognises by the
+  `Code generated ... DO NOT EDIT.` header. A program writes the file,
+  so a diagnostic there has no reader who can act on it.
+
+### Decisions the rule states
+
+The rule reads the target of an assignment and never the value. A
+method value, a function literal, and a named function all rewire the
+same seam.
+
+A restore does not stop a report. A test that saves the old value and
+puts it back with `t.Cleanup` still rewires the production code while
+it runs. The design still holds no seam.
+
+No comment justifies a report. `SAFETY:` states an invariant and
+`CONTRACT:` names an API that sets a signature, and neither fits here.
+The fix is an injected dependency: the author changes the design, and
+the report goes away.
+
+The rule reads a statement that assigns. It follows no pointer that a
+call answers with, so `patch(&now)` stays clean. It reads no call of a
+helper in another package that assigns for the test.
+
+The rule reports a variable that its own package documents as an
+override point, such as a test hook of a library. The rule cannot read
+that intent. Where a report is wrong, 003 documents the two escapes:
+`//nolint:antislop` on the golangci-lint path, and the `disable`
+setting that drops the rule from the set. A test that sets
+`flag.Usage` in `TestMain` is the known case, and the standard library
+holds one of them. Neither escape belongs in the analyzer, and both
+keep the build green while the project decides.
+
+### Measurement
+
+A scan of the whole standard library, tests included, reports 152
+findings in 38 files. 139 findings are assignments to 43 variables,
+and 85 of those name a variable with `hook` or `testingOnly` in its
+name, such as `testHookLookupIP`. Such a variable is the shape this
+rule rejects: the package keeps the seam in a global, where a
+parameter or a field belongs. 13 findings are `//go:linkname`
+directives in test files of `runtime`, `runtime/metrics`,
+`runtime/pprof`, `sync`, `time`, and `unique`. No package of the
+standard library imports a runtime patching library.
+
+The interface shape and the root of the target add 13 findings to that
+scan. `crypto/rand` patches its own `Reader`, and
+`testing/cryptotest` patches `rand.Reader` from another package, which
+is the shape this rule calls worse. `net/http` fills `testHookMu`,
+`internal/buildcfg` resets its `Error`, and `flag` writes
+`CommandLine.Usage` through a package-level pointer. Every one of the
+13 is the shape the rule states.
+
+Two shapes in that scan show the cost of a rule that reads no intent.
+A test that sets `flag.Usage` configures the test binary itself, and
+it rewires no code under test. A test of `runtime` reaches the runtime
+through the linker, and no injected dependency replaces that. Both
+carry the shape that the rule states, so both get a report.
 
 ## G09 `nointerfacereturn`: return concrete types for known values (opt-in)
 
