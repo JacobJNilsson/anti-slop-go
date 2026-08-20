@@ -12,6 +12,19 @@ func consume(T) {}
 
 func identity(v any) any { return v }
 
+// The cross-file fixtures pin the per-file lookup: a marker in one file
+// must never justify an assertion in another file. The lines of a.go
+// and b.go align on purpose. Keep them aligned, or the pair proves
+// nothing.
+
+// SAFETY: this marker belongs to a.go alone. It ends on line 21, one
+// line above the assertion of b.go, and it justifies nothing there.
+
+func CrossFileFromA(x any) {
+	a := x.(T) // want "no SAFETY justification"
+	_ = a
+}
+
 func Bare(x any) {
 	a := x.(T) // want "type assertion has no SAFETY justification; state the checked invariant in a SAFETY: comment directly above it, or use the comma-ok form"
 	_ = a

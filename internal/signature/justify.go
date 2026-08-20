@@ -1,0 +1,158 @@
+package signature
+
+import (
+	"go/ast"
+	"go/token"
+	"os"
+	"regexp"
+
+	"golang.org/x/tools/go/analysis"
+)
+
+// markerExpr returns the expression that matches one justification
+// marker. The name is the marker word, such as "SAFETY". The expression
+// follows the justification comment contract of
+// docs/spec/003-implementation.md, and it is the only place that states
+// the contract: every rule with a marker gets its expression here.
+func markerExpr(name string) *regexp.Regexp {
+	return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*:`)
+}
+
+// Justifications answers, for one analysis pass, whether the author
+// wrote a justification comment above a line. One pass and one marker
+// give one instance. The markers of
+// docs/spec/003-implementation.md share every test below; only the
+// marker itself changes, so the rules cannot drift apart.
+type Justifications struct {
+	pass      *analysis.Pass
+	marker    *regexp.Regexp
+	generated map[*token.File]bool
+	// comments is nil until the first justification test. Most packages
+	// never need it, and building it reads every source file.
+	comments *commentIndex
+}
+
+// NewJustifications prepares the marker tests for one pass. The marker
+// is the marker word of the rule, such as "SAFETY". The constructor
+// builds the expression, so no rule can write its own.
+func NewJustifications(pass *analysis.Pass, marker string) *Justifications {
+	return &Justifications{pass: pass, marker: markerExpr(marker), generated: generatedFiles(pass)}
+}
+
+// Generated reports whether pos sits in a generated file. A rule states
+// the shape of hand-written code. A report against a file that a
+// program writes has no reader who can act on it.
+func (j *Justifications) Generated(pos token.Pos) bool {
+	return j.generated[j.pass.Fset.File(pos)]
+}
+
+// MarkedAbove reports whether a justification comment ends on the line
+// directly above one of lines, in the file that holds pos. The comment
+// must own its line: a comment beside code justifies the code beside
+// it, never the line below. The analyzer cannot judge the text of the
+// comment; review must.
+func (j *Justifications) MarkedAbove(pos token.Pos, lines []int) bool {
+	if j.comments == nil {
+		j.comments = newCommentIndex(j.pass)
+	}
+	return j.comments.markedAbove(j.pass.Fset.File(pos), lines, j.marker)
+}
+
+// LineOf returns the physical line of a position. It ignores //line
+// directives, because comments sit at physical lines.
+func LineOf(fset *token.FileSet, pos token.Pos) int {
+	return fset.PositionFor(pos, false).Line
+}
+
+// commentIndex answers the question "does a whole-line comment end on
+// this line of this file?" for every comment of the package. It holds
+// no marker, so the same code serves every rule. Each pass builds its
+// own index.
+type commentIndex struct {
+	byFile  map[*token.File]map[int][]*ast.CommentGroup
+	ownLine map[*ast.CommentGroup]bool
+}
+
+func newCommentIndex(pass *analysis.Pass) *commentIndex {
+	read := sourceReader(pass)
+	index := &commentIndex{
+		byFile:  make(map[*token.File]map[int][]*ast.CommentGroup, len(pass.Files)),
+		ownLine: make(map[*ast.CommentGroup]bool),
+	}
+	for _, file := range pass.Files {
+		tokenFile := pass.Fset.File(file.FileStart)
+		src, err := read(tokenFile.Name())
+		if err != nil {
+			// Fail open: the own-line test needs the source bytes.
+			src = nil
+		}
+		byLine := make(map[int][]*ast.CommentGroup, len(file.Comments))
+		for _, group := range file.Comments {
+			end := LineOf(pass.Fset, group.End())
+			byLine[end] = append(byLine[end], group)
+			index.ownLine[group] = startsOwnLine(tokenFile, src, group)
+		}
+		index.byFile[tokenFile] = byLine
+	}
+	return index
+}
+
+// markedAbove reports whether a whole-line comment that carries the
+// marker ends on the line directly above one of lines.
+func (ci *commentIndex) markedAbove(file *token.File, lines []int, marker *regexp.Regexp) bool {
+	byLine := ci.byFile[file]
+	for _, line := range lines {
+		for _, group := range byLine[line-1] {
+			if ci.ownLine[group] && marker.MatchString(group.Text()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sourceReader returns the file reader of the pass. Not every driver
+// sets one, so the operating system is the fallback.
+func sourceReader(pass *analysis.Pass) func(name string) ([]byte, error) {
+	if pass.ReadFile != nil {
+		return pass.ReadFile
+	}
+	return os.ReadFile
+}
+
+// startsOwnLine reports whether only whitespace comes before the comment
+// group on its first line. A comment that trails code justifies the code
+// beside it, never the line below.
+func startsOwnLine(file *token.File, src []byte, group *ast.CommentGroup) bool {
+	start := file.Offset(group.Pos())
+	if start > len(src) {
+		return true // Fail open: the source is unreadable or stale.
+	}
+	lineStart := start
+	for lineStart > 0 && src[lineStart-1] != '\n' {
+		lineStart--
+	}
+	for _, b := range src[lineStart:start] {
+		if b != ' ' && b != '\t' {
+			return false
+		}
+	}
+	return true
+}
+
+// generatedFiles returns the set of files that carry the "Code
+// generated ... DO NOT EDIT." header. Their author cannot add a
+// justification.
+//
+// The set holds each token.File itself, not its name. A //line directive
+// changes the name that token.Position reports, so a comparison of names
+// can exempt the wrong file in both directions.
+func generatedFiles(pass *analysis.Pass) map[*token.File]bool {
+	files := make(map[*token.File]bool)
+	for _, file := range pass.Files {
+		if ast.IsGenerated(file) {
+			files[pass.Fset.File(file.FileStart)] = true
+		}
+	}
+	return files
+}
