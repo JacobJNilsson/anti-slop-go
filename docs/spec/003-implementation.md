@@ -129,8 +129,8 @@ linters:
             - justifypanic
 ```
 
-The example shows the target state. Only `enable` and `disable` exist
-today; `boundary-packages` and `reflect-allow` arrive with G06 and G07.
+The example shows the target state. `enable`, `disable`, and
+`reflect-allow` exist today; `boundary-packages` arrives with G06.
 
 Semantics:
 
@@ -138,12 +138,23 @@ Semantics:
   dynamic checks are legal. G06 allows type switches here. G02 needs
   no entry, because it never flags a local variable.
 - `reflect-allow`: package path patterns that may import `reflect`.
+  G07 reads it, and `-noreflect.allow` takes the same patterns on the
+  standalone path.
 - `enable` / `disable`: rule toggles. Defaults follow the severity
   column in 002. `disable` drops a rule from the default set. `enable`
   turns on an opt-in rule, so it rejects a rule that is on by default.
   Both settings reject a name that is not a rule, and the run stops. A
   configuration that disables every rule is legal; the linter then
   reports nothing.
+
+A test with golangci-lint v2.10.1 verified this path end to end. The
+project held two packages, and each one imported `reflect`.
+`reflect-allow` named one of them, and the run reported the other one
+only. A subtree pattern that ended in `/...` gave the same result, and
+so did `example.com/*/internal/codec/...`, which names the allowed
+package through a wildcard prefix. The run stopped with an
+unknown-field error when the settings held `boundary-packages`, which
+no rule reads today.
 
 This project adds no inline suppression comments. The `SAFETY:`,
 `PANICS:`, and `CONTRACT:` comments are justifications with content,

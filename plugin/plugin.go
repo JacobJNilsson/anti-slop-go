@@ -22,6 +22,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
 // name identifies the plugin. golangci-lint needs the same word in the
@@ -45,6 +46,11 @@ var optInRules = map[string]bool{}
 // key a promise: a key appears here only when a rule reads it, and a
 // key that ships stays.
 type Settings struct {
+	// ReflectAllow names the package path patterns that may import
+	// reflect. Rule G07 reads it. 003 states the pattern syntax. An
+	// empty list allows no package, which is the default of the rule.
+	ReflectAllow []string `json:"reflect-allow"`
+
 	// Enable names the opt-in rules to run. A rule that is on by
 	// default is not a choice, so a name outside optInRules is an
 	// error and the run stops.
@@ -78,13 +84,34 @@ func New(conf any) (register.LinterPlugin, error) {
 }
 
 // BuildAnalyzers returns the analyzers this run must apply.
-//
-// The result holds the package-level analyzer values of the module,
-// which every consumer shares. Today nothing writes to them. A future
-// setting that writes analyzer flags must copy each analyzer first,
-// because two golangci-lint runs can hold different settings.
 func (p *plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
-	return selectAnalyzers(antislop.Analyzers(), optInRules, p.settings)
+	return selectAnalyzers(p.configured(), optInRules, p.settings)
+}
+
+// configured returns the rule set of this run.
+//
+// A rule that reads a setting gets a new instance, and the rule always
+// gets one, whether the settings name it or not. One path is easier to
+// read than two, and the instance costs one allocation for each run.
+//
+// The package-level analyzer values of the module are shared by every
+// consumer, and two golangci-lint runs can hold different settings, so
+// the plugin never writes to those values. A rule that reads no setting
+// keeps its shared value, because nothing writes to it.
+//
+// The copy of the slice is defence. Analyzers() builds a new slice for
+// each call today, and a test of the registry pins that. This function
+// writes to the slice, so it takes a copy and depends on no promise of
+// another package.
+func (p *plugin) configured() []*analysis.Analyzer {
+	all := slices.Clone(antislop.Analyzers())
+	for i, a := range all {
+		if a.Name == noreflect.Analyzer.Name {
+			all[i] = noreflect.New(p.settings.ReflectAllow)
+		}
+	}
+
+	return all
 }
 
 // GetLoadMode tells golangci-lint to give the analyzers full type

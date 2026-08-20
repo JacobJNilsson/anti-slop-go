@@ -66,11 +66,13 @@ linters:
         description: Rejects low-evidence Go patterns.
         original-url: github.com/JacobJNilsson/anti-slop-go
         settings:
+          reflect-allow:
+            - example.com/app/internal/codec
           disable:
             - nountypedmap
 ```
 
-Four points about this file:
+Five points about this file:
 
 - `type: module` is necessary. Without it, golangci-lint looks for a
   shared object file.
@@ -83,11 +85,19 @@ Four points about this file:
   individual rules with the plugin's own `enable` and `disable`
   settings, not with `linters.enable`. An unknown rule name in either
   plugin setting stops the run.
-- `disable` drops a rule from the default set, which holds the five
-  rules that the Status section names. A configuration that disables
-  every rule is legal, and the linter then reports nothing. `enable`
-  turns on an opt-in rule. No rule is opt-in yet, so `enable` takes no
-  name today, and a name that is on by default stops the run.
+- `disable` drops a rule from the default set, which holds the rules
+  that the Status section names. A configuration that disables every
+  rule is legal, and the linter then reports nothing. `enable` turns on
+  an opt-in rule. No rule is opt-in yet, so `enable` takes no name
+  today, and a name that is on by default stops the run.
+- `reflect-allow` names the packages that may import `reflect`, which
+  rule `noreflect` (G07) reads. A pattern matches the whole import
+  path: `*` holds inside one segment, `...` crosses a slash, and a
+  pattern that ends in `/...` names the package above it as well. The
+  standalone binary takes the same patterns in the
+  `-noreflect.allow` flag, as a comma-separated list or a repeated
+  flag. An unknown settings key stops the run, so this file names only
+  the keys that a rule reads today.
 
 Run the new binary with `./custom-gcl run ./...`.
 
