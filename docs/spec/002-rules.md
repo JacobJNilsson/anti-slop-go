@@ -403,8 +403,10 @@ func NewStore() *FileStore { return &FileStore{} }
 
 ## G10 `noerrorassert`: no type assertions on errors (error)
 
-Wrapped errors defeat direct assertions and direct type switches.
-Use `errors.As` and `errors.Is`, which walk the wrap chain.
+A wrapped error defeats a direct assertion and a direct type switch.
+The wrapper carries its own dynamic type, so the test misses the error
+that the code looks for. `errors.As` and `errors.Is` walk the wrap
+chain, so they answer the question the code asks.
 
 Rejected:
 
@@ -419,9 +421,104 @@ var pe *fs.PathError
 if errors.As(err, &pe) { ... }
 ```
 
+**What the rule reads.** The rule reads the static type of the operand.
+It reports the operand whose type is the predeclared `error` type, and
+an alias of that type, such as `type E = error`. It reports both forms
+of the assertion, `err.(T)` and `pe, ok := err.(T)`. The comma-ok form
+carries the same bug: the wrapper answers `false`.
+
+**Only the `error` type.** The rule matches the literal predeclared
+type. An interface that embeds `error` is another type, and the rule
+leaves it alone. An interface that declares `Error() string` under
+another name is another type too. Both hold the method set of `error`.
+A method set is no promise about a wrap chain. Only the `error`
+contract promises one, through `Unwrap` and the `%w` verb of
+`fmt.Errorf`. A report on a wider interface would name code that
+`errors.As` cannot always replace.
+
+A defined rename escapes the rule as well. `type MyError error` has the
+predeclared type as its underlying type, and the rule reports no
+assertion on a `MyError` value. That shape is not the method-set case:
+its values come from the same `%w` machinery, and `errors.As` accepts
+them unchanged. A scan of the standard library measured the wider test
+with `types.Implements` and gave the same 307 findings, so the narrow
+test loses nothing there. The rule keeps the narrow test, and a project
+that renames `error` gets no report.
+
+**A type switch gets one diagnostic.** The guard of a type switch holds
+one assertion, and the rule reports there. A switch with six cases gets
+one diagnostic, never six. The rule reads `switch err.(type)`,
+`switch e := err.(type)`, and the form with an init statement.
+
+Rejected:
+
+```go
+switch e := err.(type) {
+case *fs.PathError:
+    ...
+}
+```
+
+**An interface target is a report too.** `err.(interface{ Timeout() bool })`
+is the idiom that the `net` package used before `errors.As` existed.
+Wrapping defeats it the same way, so the rule reports it. `errors.As`
+accepts a pointer to an interface variable, so the fix holds:
+
+```go
+var timeout interface{ Timeout() bool }
+if errors.As(err, &timeout) && timeout.Timeout() { ... }
+```
+
+A type parameter target, such as `err.(T)` in a generic function, names
+one type at each instantiation. The rule reports it with the message
+for a concrete target.
+
+**No comment stops a report.** G01 asks for a `SAFETY:` comment above a
+single-result assertion. G10 still reports the same assertion, like
+G05, because the fix is `errors.As` and not a justification. The rule
+reads no marker comment. One shape has no `errors.As` form: code that
+must read exactly one level of the chain and must not walk it. That
+shape is very rare. Its author can call `errors.Is` or `errors.As` on
+an unwrapped copy of the error, or disable the rule for the project.
+The messages for the type switch and for the interface target name that
+escape, because those two shapes hold most of the deliberate
+single-level code.
+
+**The rule holds no exemption list.** A function that walks the wrap
+chain itself asserts on an error, such as a copy of `errors.Unwrap`.
+The rule reports it. A list of exempt shapes would grow with every
+guess, and each entry would hide real findings elsewhere. A package
+that implements the chain itself disables the rule.
+
+**Positions and files.** The diagnostic sits at the `.(` token of the
+assertion or of the switch guard. The rule skips generated files, which
+`go/ast` recognises by the `Code generated ... DO NOT EDIT.` header. A
+program writes the file, so a diagnostic there has no reader who can
+act on it.
+
+**A test file gets no exemption.** Test code reads wrapped errors too.
+The fix costs more there than in production code. A test that asserts
+an exact dynamic type asks a narrower question than `errors.As` answers:
+`errors.As` matches a wrapped value that the test was written to
+reject. A mechanical rewrite of such a test weakens it. The comparator
+of `archive/tar/writer_test.go` and the test of `errors.As` itself in
+`errors/wrap_test.go` both hold that shape. The author must decide
+which question the test asks, and rewrite it or disable the rule for
+the package.
+
+**The volume this rule adds.** A scan of the standard library gives 307
+findings. 86 sit in production files, and 221 sit in test files. The
+test ruling above therefore drives 72 percent of the volume. The
+numbers stay in family with the rules that shipped before: `safetyassert`
+gives 1220 findings on the same scan, and `noanyparam` gives 601. G10
+ranks third. The default severity of `error` rests on these numbers,
+and a project with a large legacy error surface uses the `disable`
+setting.
+
 `staticcheck` covers parts of this; the rule exists so the set stays
-complete when a project runs this project alone. The configuration can
-turn it off when `staticcheck` runs with the equivalent checks.
+complete when a project runs this project alone. A project that runs
+`staticcheck` with the equivalent checks names `noerrorassert` in the
+`disable` setting of the plugin, which 003 describes.
 
 ## G11 `justifypanic`: require a PANICS comment for panic in library code (opt-in)
 

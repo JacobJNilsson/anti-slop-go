@@ -8,10 +8,10 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Implementation phase. Five analyzers are available, and all five run by
+Implementation phase. Six analyzers are available, and all six run by
 default: `safetyassert` (rule G01), `nountypedmap` (G02), `noanyparam`
-(G03), `noanyreturn` (G04), and `nolaundering` (G05). Read the
-specification in [`docs/spec`](docs/spec):
+(G03), `noanyreturn` (G04), `nolaundering` (G05), and `noerrorassert`
+(G10). Read the specification in [`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
 2. [Rules](docs/spec/002-rules.md): the rule catalogue with examples.
