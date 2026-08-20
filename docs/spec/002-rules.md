@@ -351,6 +351,161 @@ it; application code does not. The configuration allowlists packages
 (by path pattern) that may import `reflect`. `reflect.DeepEqual` in
 test files is exempt by default.
 
+Rejected:
+
+```go
+package service
+
+import "reflect"
+
+func Store(v any) error {
+    if reflect.TypeOf(v).Kind() != reflect.Struct {
+        return errors.New("want a struct")
+    }
+    ...
+}
+```
+
+Accepted:
+
+```go
+package service
+
+func Store(r Record) error { ... }
+```
+
+### What the rule reads
+
+The rule reads the import of `reflect`, because the import is the
+decision. A package that imports `reflect` reflects, whatever the
+number of call sites, and one report per file names the decision at the
+place a reader can remove it. The diagnostic sits at the import
+specification. A file may import one package twice, under two names,
+and each specification is a decision, so each one gets a report. No
+production file of the standard library holds that shape, and a fixture
+of the rule pins it.
+
+The rule reads the objects that the type checker resolved, and never
+the name of the import. A renamed import, such as `r "reflect"`, and a
+dot import both give the same objects, so both follow the same rule.
+
+### The allowlist
+
+The allowlist is the whole escape. The `reflect-allow` setting of the
+plugin, and the `-noreflect.allow` flag of the standalone binary, take
+package path patterns. A package whose import path matches one pattern
+may import `reflect` in every file. 003 states the pattern syntax and
+the two configuration paths.
+
+The rule drops a trailing `_test` from the import path before it reads
+the patterns. The external test package of a package carries the path
+of that package with `_test` at the end, and one entry covers both.
+
+The drop works in one direction only, and it is silent, so an entry
+names the production package path. Two consequences follow:
+
+- An entry that names an external test package, such as
+  `example.com/app/codec_test`, matches nothing. The rule drops the
+  suffix from the path of the package before the comparison, so no
+  package path ever ends in `_test`. Such an entry reports no error and
+  allows nothing.
+- An entry that names a production package also allows a real package
+  whose own path ends in `_test`. A directory named `foo_test` holds
+  such a package, and the pattern `example.com/app/foo` allows it.
+
+Both come from one rule: the analyzer cannot ask the driver whether a
+package is a test variant, so it reads the path.
+
+The design puts the reflection in a boundary package, and the pattern
+names that package:
+
+```yaml
+reflect-allow:
+  - "example.com/app/internal/codec"
+```
+
+### The test file exemption
+
+A test file that only calls `reflect.DeepEqual` is clean. Go gives a
+test no other way to compare two values of a composite type, and the
+comparison reads no type at run time that the test did not write.
+
+The exemption covers `DeepEqual` alone. One other use of `reflect` in
+the same file takes the whole import back into the rule, and the
+message names that reason. The exemption is a property of the file, so
+a package keeps clean test files beside a test file that reports.
+
+The report of a test file sits at the first use that is not
+`DeepEqual`, and not at the import. The import of a test file is no
+error by itself, and the use is the line the author must change. A
+production file keeps its report at the import, which is the line the
+author removes there. A test file therefore gets one report, whatever
+the number of its imports of `reflect`.
+
+A blank import, `_ "reflect"`, uses no object of the package. A test
+file with one stays clean under the rule above. A production file with
+one reports at the import, because every import of a production file
+reports and the file needs no reflection at all.
+
+A file that is no test file always reports, `DeepEqual` included. A
+production comparison of two values belongs to the types themselves,
+through an `Equal` method or a comparison of fields.
+
+### What the rule leaves alone
+
+- **A generated file**, which `go/ast` recognises by the
+  `Code generated ... DO NOT EDIT.` header. A program writes the file,
+  so a diagnostic there has no reader who can act on it.
+- **A package that a pattern allows**, in every file of it.
+
+No comment stops a report. `SAFETY:` states an invariant and
+`CONTRACT:` names an API that sets a signature, and neither fits an
+import. The allowlist is the escape, and it sits in the configuration
+of the project, where a review can read the whole list at once.
+
+### Measurement
+
+A scan of the whole standard library, tests included, reports 132
+findings in 132 files and 52 packages. The scan ran the standalone
+binary over `./...` in `GOROOT/src` with Go 1.26.2 on darwin/arm64.
+
+48 findings sit in production files of 26 packages. Those 26 packages
+hold the codecs (`encoding/gob`, `encoding/json`, `encoding/xml`,
+`encoding/asn1`, `encoding/binary`), the formatters (`fmt`,
+`internal/fmtsort`, `text/template`, `html/template`, `log/slog`), and
+the frameworks that accept a value of any type (`database/sql`,
+`net/rpc`, `testing`, `testing/quick`, `internal/fuzz`, `flag`). A
+project allows such a package, or it never writes one.
+
+84 findings sit in 84 test files, one for each file. 172 test files of
+the standard library import `reflect`, so the `DeepEqual` exemption
+clears 88 of them. That denominator comes from the file lists of the go
+tool for the same platform:
+
+```sh
+go list -f '{{$d := .Dir}}{{range .TestGoFiles}}{{$d}}/{{.}}
+{{end}}{{range .XTestGoFiles}}{{$d}}/{{.}}
+{{end}}' std
+```
+
+The files of that list that hold an import line of `reflect` are the
+172. A build constraint keeps some test files out of the list, and
+another platform therefore gives another number. State the platform
+with the count.
+
+Four x repositories give: `golang.org/x/tools` 52 findings, 9 of them
+in test files; `golang.org/x/text` 24 findings, 11 in test files;
+`golang.org/x/net` 11 findings, 7 in test files; `golang.org/x/exp` 5
+findings, 1 in a test file. The production findings of `x/tools` sit in
+the syntax-tree machinery and in the fact encoding of the analysis
+framework, which read types while they run. The findings of `x/text`
+sit in the table generators and in the CLDR decoder, and the findings
+of `x/net` sit in an XML codec and in `http2`.
+
+The volume of this rule is therefore an allowlist question and not a
+code question: a project writes one entry for each boundary package,
+and the rule then reports the reflection that leaked out of them.
+
 ## G08 `nomonkeypatch`: no monkey patching in tests (error)
 
 A test must not rewire production code through mutable globals.

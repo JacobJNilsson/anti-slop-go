@@ -80,6 +80,11 @@ them here:
 - `ireturn`: "accept interfaces, return concrete types". Rule G09
   overlaps; the configuration section explains the split.
 - `staticcheck`, `govet`, `revive`: general correctness and idiom.
+- `depguard`: a deny list of import paths. It covers the plain half of
+  rule G07, which is "no package imports `reflect`". G07 keeps its own
+  analyzer for the other half: an allowlist of package path patterns,
+  and the exemption for `reflect.DeepEqual` in a test file. A deny list
+  answers neither.
 
 Surface-pattern "slop" tools (sloplint, grain, ai-slop-detector) solve
 a different problem and compose freely with this project.
