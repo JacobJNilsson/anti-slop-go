@@ -119,11 +119,28 @@ and `CONTRACT:` (G03 and G04).
   holds it.
 - The comment owns its line. A comment beside code justifies the code
   beside it, never the line below.
-- The marker matches the regular expression `\bSAFETY\s*:`,
-  `\bPANICS\s*:`, or `\bCONTRACT\s*:`.
+- The marker starts a line of the comment text. It matches the regular
+  expression `(?m)^[\s*]*<MARKER>\s*:`, where `<MARKER>` is one of
+  `SAFETY`, `PANICS`, and `CONTRACT`.
+- The marker may start any line of a comment group, not the first line
+  only.
+- A marker inside a sentence counts for nothing, and so does a marker
+  with a prefix. `NOT-SAFETY:` is no justification.
 - The text after the marker must state the invariant, the reason to
   stop the process, or the API that sets the signature. The analyzer
   cannot judge the text; review must.
+
+The input of the expression is the text of `ast.CommentGroup.Text`.
+That method removes the comment markers and the first space of a line
+comment. It keeps the rest of the leading text of a line. A block
+comment may start with a space, and a gutter of stars stays. The class
+before the marker accepts both.
+
+One implementation enforces this contract for every rule.
+`internal/signature.NewJustifications` takes the marker word and builds
+the expression. The `Justifications` value it returns runs the position
+tests. A rule supplies its marker word and its candidate lines, and
+nothing else.
 
 ## Milestones
 

@@ -19,9 +19,10 @@ const doc = `require a SAFETY comment for panicking type assertions
 
 A single-result type assertion v.(T) panics when the value is not a T.
 The author must state the invariant that makes the panic unreachable, in
-a comment that matches SAFETY: and sits directly above the assertion or
-above the statement that contains it. The comma-ok form is checked code
-and needs no comment. The rule skips generated files.`
+a comment that sits directly above the assertion or above the statement
+that contains it. The marker SAFETY: must start a line of that comment.
+The comma-ok form is checked code and needs no comment. The rule skips
+generated files.`
 
 // Analyzer reports single-result type assertions that carry no SAFETY
 // justification. It implements rule G01; see docs/spec/002-rules.md.

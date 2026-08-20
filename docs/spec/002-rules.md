@@ -41,7 +41,9 @@ if !ok {
 ```
 
 The comment must sit directly above the assertion or above its
-containing statement, and must match `SAFETY:`.
+containing statement. The marker `SAFETY:` must start a line of the
+comment text, so `NOT-SAFETY:` is no justification. The full marker
+contract is in 003.
 This rule supersedes `forcetypeassert`.
 
 The rule skips generated files, which `go/ast` recognises by the
@@ -386,11 +388,11 @@ func newBuffer() any { return new(bytes.Buffer) }
 ```
 
 The comment follows the justification contract of 003: it owns its
-line, and it matches `\bCONTRACT\s*:`. It ends on the line directly
-above the line where the signature starts. A function declaration, a
-method, an interface method, and a field start on that line. Where the
-signature sits inside an expression that spans lines, the comment sits
-above the statement or the variable declaration.
+line, and the marker `CONTRACT:` starts a line of its text. It ends on
+the line directly above the line where the signature starts. A function
+declaration, a method, an interface method, and a field start on that
+line. Where the signature sits inside an expression that spans lines,
+the comment sits above the statement or the variable declaration.
 
 One comment can silence more than one signature, so place it with
 care:

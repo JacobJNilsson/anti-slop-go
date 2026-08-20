@@ -48,6 +48,24 @@ func Detached(v any) {} // want `parameter uses the empty interface`
 // contract: the marker is case sensitive.
 func Lowercase(v any) {} // want `parameter uses the empty interface`
 
+// NOT-CONTRACT: a hyphen is no line start, so this text is no marker.
+func Prefixed(v any) {} // want `parameter uses the empty interface`
+
+// The word CONTRACT: here sits inside a sentence, so it is no marker.
+func InsideASentence(v any) {} // want `parameter uses the empty interface`
+
+// An external API sets this signature.
+// CONTRACT: the marker may start any line of the comment group.
+func SecondLine(v any) {}
+
+/*
+ * CONTRACT: a gutter of stars keeps the marker at the line start.
+ */
+func StarGutter(v any) {}
+
+// - CONTRACT: a dash is no line start, so this item is no marker.
+func ListItem(v any) {} // want `parameter uses the empty interface`
+
 var trailing = 1 // CONTRACT: this comment trails code, so it justifies nothing.
 func TrailingAbove(v any) {} // want `parameter uses the empty interface`
 

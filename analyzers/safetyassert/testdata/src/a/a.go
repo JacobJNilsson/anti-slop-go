@@ -144,6 +144,39 @@ func SafetyInABlockComment(x any) {
 	_ = a
 }
 
+func SafetyOnTheSecondLineOfAGroup(x any) {
+	// The loader checks the payload before it stores the value.
+	// SAFETY: only T values reach this function.
+	a := x.(T)
+	_ = a
+}
+
+func SafetyInABlockWithAStarGutter(x any) {
+	/*
+	 * SAFETY: only T values reach this function.
+	 */
+	a := x.(T)
+	_ = a
+}
+
+func MarkerWithAPrefix(x any) {
+	// NOT-SAFETY: a hyphen is no line start, so this text is no marker.
+	a := x.(T) // want "no SAFETY justification"
+	_ = a
+}
+
+func MarkerInsideASentence(x any) {
+	// The word SAFETY: here sits inside a sentence, so it is no marker.
+	a := x.(T) // want "no SAFETY justification"
+	_ = a
+}
+
+func MarkerInAListItem(x any) {
+	// - SAFETY: a dash is no line start, so this item is no marker.
+	a := x.(T) // want "no SAFETY justification"
+	_ = a
+}
+
 func MarkerWithoutAColon(x any) {
 	// SAFETY needs a colon, so this text is not a justification.
 	a := x.(T) // want "no SAFETY justification"
