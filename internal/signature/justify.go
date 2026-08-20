@@ -37,7 +37,7 @@ func markerExpr(name string) *regexp.Regexp {
 type Justifications struct {
 	pass      *analysis.Pass
 	marker    *regexp.Regexp
-	generated map[*token.File]bool
+	generated func(pos token.Pos) bool
 	// comments is nil until the first justification test. Most packages
 	// never need it, and building it reads every source file.
 	comments *commentIndex
@@ -47,14 +47,13 @@ type Justifications struct {
 // is the marker word of the rule, such as "SAFETY". The constructor
 // builds the expression, so no rule can write its own.
 func NewJustifications(pass *analysis.Pass, marker string) *Justifications {
-	return &Justifications{pass: pass, marker: markerExpr(marker), generated: generatedFiles(pass)}
+	return &Justifications{pass: pass, marker: markerExpr(marker), generated: GeneratedFiles(pass)}
 }
 
-// Generated reports whether pos sits in a generated file. A rule states
-// the shape of hand-written code. A report against a file that a
-// program writes has no reader who can act on it.
+// Generated reports whether pos sits in a generated file. It runs the
+// test of GeneratedFiles, so a rule with a marker needs one value only.
 func (j *Justifications) Generated(pos token.Pos) bool {
-	return j.generated[j.pass.Fset.File(pos)]
+	return j.generated(pos)
 }
 
 // MarkedAbove reports whether a justification comment ends on the line
@@ -149,21 +148,4 @@ func startsOwnLine(file *token.File, src []byte, group *ast.CommentGroup) bool {
 		}
 	}
 	return true
-}
-
-// generatedFiles returns the set of files that carry the "Code
-// generated ... DO NOT EDIT." header. Their author cannot add a
-// justification.
-//
-// The set holds each token.File itself, not its name. A //line directive
-// changes the name that token.Position reports, so a comparison of names
-// can exempt the wrong file in both directions.
-func generatedFiles(pass *analysis.Pass) map[*token.File]bool {
-	files := make(map[*token.File]bool)
-	for _, file := range pass.Files {
-		if ast.IsGenerated(file) {
-			files[pass.Fset.File(file.FileStart)] = true
-		}
-	}
-	return files
 }

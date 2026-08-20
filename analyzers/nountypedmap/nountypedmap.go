@@ -11,6 +11,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
 const doc = `reject maps with an empty interface value type
@@ -51,7 +53,7 @@ func run(pass *analysis.Pass) (any, error) {
 	// supplies its result, and that result is an *inspector.Inspector.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	generated := generatedFiles(pass)
+	generated := signature.GeneratedFiles(pass)
 
 	// report tests the type the compiler gave the written expression,
 	// so an alias resolves to the map it names.
@@ -59,7 +61,7 @@ func run(pass *analysis.Pass) (any, error) {
 		if !isUntypedMap(pass.TypesInfo.TypeOf(e)) {
 			return
 		}
-		if generated[pass.Fset.File(e.Pos())] {
+		if generated(e.Pos()) {
 			return
 		}
 		pass.Reportf(e.Pos(), "%s uses %s; %s", where, types.ExprString(e), advice)
@@ -89,7 +91,7 @@ func run(pass *analysis.Pass) (any, error) {
 				if obj == nil || !isUntypedMap(obj.Type()) {
 					continue
 				}
-				if generated[pass.Fset.File(name.Pos())] {
+				if generated(name.Pos()) {
 					continue
 				}
 				// RelativeTo keeps the message in the reader's terms: a
@@ -148,21 +150,4 @@ func isUntypedMap(t types.Type) bool {
 	}
 	elem, isIface := types.Unalias(m.Elem()).(*types.Interface)
 	return isIface && elem.Empty()
-}
-
-// generatedFiles returns the generated files of the pass. The rule
-// states the shape of hand-written code, so a report against a file
-// that a program writes has no reader who can act on it.
-//
-// The set holds each token.File itself, not its name. A //line
-// directive changes the name that token.Position reports, so a
-// comparison of names can exempt the wrong file in both directions.
-func generatedFiles(pass *analysis.Pass) map[*token.File]bool {
-	files := make(map[*token.File]bool)
-	for _, f := range pass.Files {
-		if ast.IsGenerated(f) {
-			files[pass.Fset.File(f.FileStart)] = true
-		}
-	}
-	return files
 }

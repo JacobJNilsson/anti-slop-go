@@ -14,6 +14,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
 const doc = `reject monkey patching in tests
@@ -94,13 +96,15 @@ func run(pass *analysis.Pass) (any, error) {
 	// supplies its result, and that result is an *inspector.Inspector.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
+	generated := signature.GeneratedFiles(pass)
+
 	// tests holds every file the rule reads: a test file that no
 	// program writes. A report against a generated file has no reader
 	// who can act on it.
 	tests := make(map[*token.File]bool, len(pass.Files))
 	for _, file := range pass.Files {
 		tokenFile := pass.Fset.File(file.FileStart)
-		if !isTestFile(tokenFile) || ast.IsGenerated(file) {
+		if !signature.IsTestFile(tokenFile) || generated(file.FileStart) {
 			continue
 		}
 		tests[tokenFile] = true
@@ -143,16 +147,6 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	})
 	return nil, nil
-}
-
-// isTestFile reports whether a file is a test file. The name of the
-// file is the whole test, which is the test the go tool applies.
-//
-// The name of the package answers another question. It separates the
-// external test package from the test files that sit in the package
-// under test. The rule reads both.
-func isTestFile(file *token.File) bool {
-	return strings.HasSuffix(file.Name(), "_test.go")
 }
 
 // patches reports whether an assignment target rewires behaviour that
@@ -256,7 +250,7 @@ func holdsBehaviour(t types.Type) bool {
 // a variable of another package.
 func declaredInTestFile(fset *token.FileSet, pos token.Pos) bool {
 	file := fset.File(pos)
-	return file != nil && isTestFile(file)
+	return file != nil && signature.IsTestFile(file)
 }
 
 // reportImports reports every import of a runtime patching library.
