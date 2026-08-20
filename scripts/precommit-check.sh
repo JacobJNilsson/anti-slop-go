@@ -214,4 +214,7 @@ go vet $scope
 golangci-lint run $lintdirs
 go test -race -coverprofile=coverage.scoped.out $scope
 sh scripts/coverage-gate-scoped.sh coverage.scoped.out $scope
+# Self-lint the scoped packages with the repo's own analyzers, so slop
+# fails at commit time, not only at pre-push and CI.
+go run ./cmd/antislop $scope
 finish "scoped gate green (full gate still runs at pre-push/CI)"
