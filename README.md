@@ -8,10 +8,11 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Implementation phase. Eight analyzers are available, and all eight run
+Implementation phase. Nine analyzers are available, and all nine run
 by default: `safetyassert` (rule G01), `nountypedmap` (G02),
 `noanyparam` (G03), `noanyreturn` (G04), `nolaundering` (G05),
-`noreflect` (G07), `nomonkeypatch` (G08), and `noerrorassert` (G10).
+`noadhoctypeswitch` (G06), `noreflect` (G07), `nomonkeypatch` (G08),
+and `noerrorassert` (G10).
 Read the specification in [`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
@@ -66,13 +67,15 @@ linters:
         description: Rejects low-evidence Go patterns.
         original-url: github.com/JacobJNilsson/anti-slop-go
         settings:
+          boundary-packages:
+            - example.com/app/internal/ingest
           reflect-allow:
             - example.com/app/internal/codec
           disable:
             - nountypedmap
 ```
 
-Five points about this file:
+Seven points about this file:
 
 - `type: module` is necessary. Without it, golangci-lint looks for a
   shared object file.
@@ -90,14 +93,20 @@ Five points about this file:
   rule is legal, and the linter then reports nothing. `enable` turns on
   an opt-in rule. No rule is opt-in yet, so `enable` takes no name
   today, and a name that is on by default stops the run.
+- Two settings name packages by path pattern. A pattern matches the
+  whole import path: `*` holds inside one segment, `...` crosses a
+  slash, and a pattern that ends in `/...` names the package above it
+  as well. The standalone binary takes the same patterns in a flag, as
+  a comma-separated list or a repeated flag. An unknown settings key
+  stops the run, so this file names only the keys that a rule reads
+  today.
+- `boundary-packages` names the packages that decode input, which rule
+  `noadhoctypeswitch` (G06) reads. A type switch on an `any` value is
+  the work of such a package, so the rule accepts every one of them
+  there. The standalone flag is `-noadhoctypeswitch.boundary`.
 - `reflect-allow` names the packages that may import `reflect`, which
-  rule `noreflect` (G07) reads. A pattern matches the whole import
-  path: `*` holds inside one segment, `...` crosses a slash, and a
-  pattern that ends in `/...` names the package above it as well. The
-  standalone binary takes the same patterns in the
-  `-noreflect.allow` flag, as a comma-separated list or a repeated
-  flag. An unknown settings key stops the run, so this file names only
-  the keys that a rule reads today.
+  rule `noreflect` (G07) reads. The standalone flag is
+  `-noreflect.allow`.
 
 Run the new binary with `./custom-gcl run ./...`.
 

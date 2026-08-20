@@ -111,10 +111,12 @@ func run(pass *analysis.Pass) (any, error) {
 				// own, and Go states no negative answer at compile time.
 				return
 			}
-			if mentionsTypeParam(target) {
+			if signature.MentionsTypeParam(target) {
 				// Go builds a parameterized value from a concrete one
 				// through an interface only, so the widening is no
-				// choice of the author.
+				// choice of the author. Rule G06 reads the same walk of
+				// internal/signature, so the two rules answer this
+				// question alike.
 				return
 			}
 		}
@@ -122,7 +124,7 @@ func run(pass *analysis.Pass) (any, error) {
 		// operand can span several lines, and the reader needs the
 		// position of the step that this rule rejects.
 		if from, to, widens := chainWidening(pass.TypesInfo, assert.X); widens {
-			if mentionsTypeParam(from) {
+			if signature.MentionsTypeParam(from) {
 				// Go reads a parameterized value through an interface
 				// only, so the widening is no choice of the author.
 				return
@@ -142,47 +144,6 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	})
 	return nil, nil
-}
-
-// mentionsTypeParam reports whether a type parameter appears in a
-// type. Go reads and builds a value of such a type through an
-// interface only, so a widening of one is no choice of the author.
-//
-// The walk covers the type constructors that an assertion names: a
-// named type carries its type arguments, a map carries two types, a
-// struct and a signature carry their members, and every other
-// constructor carries one element type.
-func mentionsTypeParam(t types.Type) bool {
-	switch x := types.Unalias(t).(type) {
-	case *types.TypeParam:
-		return true
-	case *types.Named:
-		args := x.TypeArgs()
-		return mentionsAny(args.Len(), args.At)
-	case *types.Map:
-		return mentionsTypeParam(x.Key()) || mentionsTypeParam(x.Elem())
-	case *types.Struct:
-		return mentionsAny(x.NumFields(), func(i int) types.Type { return x.Field(i).Type() })
-	case *types.Tuple:
-		return mentionsAny(x.Len(), func(i int) types.Type { return x.At(i).Type() })
-	case *types.Signature:
-		return mentionsTypeParam(x.Params()) || mentionsTypeParam(x.Results())
-	case interface{ Elem() types.Type }:
-		// A pointer, a slice, an array, and a channel.
-		return mentionsTypeParam(x.Elem())
-	}
-	return false
-}
-
-// mentionsAny reports whether a type parameter appears in one of the
-// n types that at returns.
-func mentionsAny(n int, at func(int) types.Type) bool {
-	for i := range n {
-		if mentionsTypeParam(at(i)) {
-			return true
-		}
-	}
-	return false
 }
 
 // chainWidening reports whether the operand of an assertion widens a

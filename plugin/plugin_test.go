@@ -10,6 +10,7 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
@@ -118,11 +119,11 @@ func TestNewRejectsWrongType(t *testing.T) {
 // The decoder rejects an unknown field, so a key of a rule that does
 // not exist yet fails the run. This test records that contract.
 func TestNewRejectsUnknownKey(t *testing.T) {
-	_, err := New(map[string]any{"boundary-packages": []any{"example.com/x"}})
+	_, err := New(map[string]any{"panic-allow": []any{"example.com/x"}})
 	if err == nil {
 		t.Fatal("New accepted an unknown settings key; want an error")
 	}
-	if !strings.Contains(err.Error(), "boundary-packages") {
+	if !strings.Contains(err.Error(), "panic-allow") {
 		t.Errorf("the error does not name the bad key: %v", err)
 	}
 }
@@ -309,20 +310,67 @@ func TestBuildAnalyzersGivesNoreflectItsPatterns(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), configured, "allowed", "notallowed")
 }
 
-// Two golangci-lint runs can hold different settings, and the analyzer
-// values of the module are shared. The plugin must therefore build its
-// own instance and never write to the shared one.
-func TestBuildAnalyzersLeavesTheSharedAnalyzerAlone(t *testing.T) {
-	built, err := build(t, map[string]any{"reflect-allow": []any{"allowed"}})
+// The boundary-packages setting is the configuration surface of rule
+// G06 on the golangci-lint path. It takes the same path patterns.
+func TestNewDecodesBoundaryPackages(t *testing.T) {
+	patterns := []string{"example.com/app/internal/ingest", ".../api/..."}
+
+	p, err := New(map[string]any{"boundary-packages": []any{patterns[0], patterns[1]}})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if !slices.Equal(got.settings.BoundaryPackages, patterns) {
+		t.Errorf("boundary-packages = %v; want %v", got.settings.BoundaryPackages, patterns)
+	}
+}
+
+// The patterns must reach the analyzer of rule G06 too. The boundary
+// fixture carries no expectation comment and the other one does, so one
+// run tests both directions.
+func TestBuildAnalyzersGivesNoadhoctypeswitchItsPatterns(t *testing.T) {
+	built, err := build(t, map[string]any{"boundary-packages": []any{"boundary"}})
 	if err != nil {
 		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
 	}
 
-	if configured := byName(t, built, noreflect.Analyzer.Name); configured == noreflect.Analyzer {
-		t.Error("BuildAnalyzers returned the shared analyzer; the next run would inherit these patterns")
+	configured := byName(t, built, noadhoctypeswitch.Analyzer.Name)
+	analysistest.Run(t, analysistest.TestData(), configured, "boundary", "notboundary")
+}
+
+// Two golangci-lint runs can hold different settings, and the analyzer
+// values of the module are shared. The plugin must therefore build its
+// own instance of every configurable rule, and never write to the
+// shared one.
+func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
+	built, err := build(t, map[string]any{
+		"reflect-allow":     []any{"allowed"},
+		"boundary-packages": []any{"boundary"},
+	})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
 	}
-	if got := noreflect.Analyzer.Flags.Lookup("allow").Value.String(); got != "" {
-		t.Errorf("the shared analyzer holds the patterns %q of one run", got)
+
+	configurable := []struct {
+		shared *analysis.Analyzer
+		flag   string
+	}{
+		{noreflect.Analyzer, "allow"},
+		{noadhoctypeswitch.Analyzer, "boundary"},
+	}
+	for _, rule := range configurable {
+		t.Run(rule.shared.Name, func(t *testing.T) {
+			if configured := byName(t, built, rule.shared.Name); configured == rule.shared {
+				t.Error("BuildAnalyzers returned the shared analyzer; the next run would inherit these patterns")
+			}
+			if got := rule.shared.Flags.Lookup(rule.flag).Value.String(); got != "" {
+				t.Errorf("the shared analyzer holds the patterns %q of one run", got)
+			}
+		})
 	}
 }
 
