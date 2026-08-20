@@ -11,9 +11,9 @@ This project applies the same philosophy to Go.
 Specification phase. No analyzers exist yet.
 Read the specification in [`docs/spec`](docs/spec):
 
-1. [Overview](docs/spec/001-overview.md) — philosophy, goals, and scope.
-2. [Rules](docs/spec/002-rules.md) — the rule catalogue with examples.
-3. [Implementation](docs/spec/003-implementation.md) — architecture, distribution, and configuration.
+1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
+2. [Rules](docs/spec/002-rules.md): the rule catalogue with examples.
+3. [Implementation](docs/spec/003-implementation.md): architecture, distribution, and configuration.
 
 ## The idea in one paragraph
 
@@ -23,6 +23,15 @@ A type assertion with no stated invariant, an `any` parameter, or a
 reader. These rules reject such patterns. The author must decode input
 at its I/O boundary, keep concrete types inside the program, and write
 a `// SAFETY:` justification where an assertion is the correct tool.
+
+## Development
+
+Run `make setup` once per clone; it installs the tracked git hooks.
+`make check` is the definition of green: tidy check, vet, lint, the
+coverage-gate self-test, race-enabled tests behind a statement coverage
+gate (`COVERAGE_MIN`, default 90%), and the build. Read
+[AGENTS.md](AGENTS.md) before your first commit and
+[REVIEW.md](REVIEW.md) before your first pull request.
 
 ## License
 

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Lint, Test, Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Pinned so CI and the workstation run the same linter; a floating
+      # version would let a new golangci-lint release redden CI while the
+      # local gate stays green.
+      - name: Install golangci-lint
+        run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.10.1
+
+      # CI runs the gate through make, unchanged, so the Makefile stays
+      # the single definition of green and a new check stage cannot be
+      # silently missing here.
+      - name: Run the full gate
+        run: make check
