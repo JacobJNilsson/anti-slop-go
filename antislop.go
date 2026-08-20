@@ -5,6 +5,7 @@ package antislop
 import (
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyreturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noerrorassert"
@@ -20,13 +21,14 @@ import (
 // consumer's configuration, not here.
 func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
-		safetyassert.Analyzer,  // G01
-		nountypedmap.Analyzer,  // G02
-		noanyparam.Analyzer,    // G03
-		noanyreturn.Analyzer,   // G04
-		nolaundering.Analyzer,  // G05
-		noreflect.Analyzer,     // G07
-		nomonkeypatch.Analyzer, // G08
-		noerrorassert.Analyzer, // G10
+		safetyassert.Analyzer,      // G01
+		nountypedmap.Analyzer,      // G02
+		noanyparam.Analyzer,        // G03
+		noanyreturn.Analyzer,       // G04
+		nolaundering.Analyzer,      // G05
+		noadhoctypeswitch.Analyzer, // G06
+		noreflect.Analyzer,         // G07
+		nomonkeypatch.Analyzer,     // G08
+		noerrorassert.Analyzer,     // G10
 	}
 }

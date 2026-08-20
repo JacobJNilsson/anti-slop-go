@@ -9,7 +9,7 @@ func TestAnalyzersReturnsRegisteredRules(t *testing.T) {
 	}
 	// The spec (docs/spec/002-rules.md) defines rules G01-G11. Grow this
 	// expectation with each implemented analyzer.
-	if len(got) != 8 {
+	if len(got) != 9 {
 		t.Fatalf("Analyzers() returned %d analyzers; update this test with the rule set", len(got))
 	}
 }

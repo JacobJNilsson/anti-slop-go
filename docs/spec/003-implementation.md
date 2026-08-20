@@ -30,9 +30,9 @@ anti-slop-go/
   golangci-lint dependency.
 - `internal/signature` holds the machinery that more than one rule
   needs: the generated-file test that every rule applies, the
-  justification comment contract below, and the signature tests that
-  G03 and G04 share. One implementation of a contract cannot drift from
-  itself.
+  justification comment contract below, the signature tests that G03,
+  G04, and G06 share, and the type-parameter walk that G05 and G06
+  share. One implementation of a contract cannot drift from itself.
 - `internal/pathmatch` holds the package path patterns that the
   settings use. The Configuration section states their syntax.
 - Tests use `analysistest` with `testdata` packages. Every rule ships
@@ -64,8 +64,10 @@ callers never share one.
 **A flag**, for `cmd/antislop` and for `go vet -vettool`. Both paths
 read no configuration file. `New` registers the flag of the rule on the
 instance it builds, and the flag writes into the configuration of that
-instance. `-noreflect.allow` is the first such flag, and the
-multichecker registers it because it registers the analyzer.
+instance. `-noreflect.allow` and `-noadhoctypeswitch.boundary` are the
+flags today, and the multichecker registers each one because it
+registers the analyzer. Both take a comma-separated list, and a
+repeated flag adds patterns.
 
 The settings block is the configuration surface of the plugin.
 golangci-lint gives the block to `New` of the plugin through
@@ -129,14 +131,17 @@ linters:
             - justifypanic
 ```
 
-The example shows the target state. `enable`, `disable`, and
-`reflect-allow` exist today; `boundary-packages` arrives with G06.
+The example shows the target state. `boundary-packages`, `enable`,
+`disable`, and `reflect-allow` exist today; the rules that `enable`
+names arrive in M4.
 
 Semantics:
 
 - `boundary-packages`: package path patterns where decode-time
-  dynamic checks are legal. G06 allows type switches here. G02 needs
-  no entry, because it never flags a local variable.
+  dynamic checks are legal. G06 accepts every type switch of such a
+  package, and `-noadhoctypeswitch.boundary` takes the same patterns
+  on the standalone path. G02 needs no entry, because it never flags a
+  local variable.
 - `reflect-allow`: package path patterns that may import `reflect`.
   G07 reads it, and `-noreflect.allow` takes the same patterns on the
   standalone path.
@@ -152,9 +157,15 @@ project held two packages, and each one imported `reflect`.
 `reflect-allow` named one of them, and the run reported the other one
 only. A subtree pattern that ended in `/...` gave the same result, and
 so did `example.com/*/internal/codec/...`, which names the allowed
-package through a wildcard prefix. The run stopped with an
-unknown-field error when the settings held `boundary-packages`, which
-no rule reads today.
+package through a wildcard prefix.
+
+A second test verified `boundary-packages` the same way. The project
+held two packages, and each one held a type switch on an `any` value.
+The setting named `example.com/proj/internal/ingest`, and the run
+reported the other package only. `example.com/*/internal/...` gave the
+same result, and a run with no `boundary-packages` key reported both.
+The run stopped with an unknown-field error when the settings held a
+key that no rule reads.
 
 This project adds no inline suppression comments. The `SAFETY:`,
 `PANICS:`, and `CONTRACT:` comments are justifications with content,
@@ -231,10 +242,14 @@ nothing else.
   included, gives 3 findings, and four x repositories give 2. Measure
   again on a project that decodes a lot of input, before that work
   starts.
-- G06 sealed-interface guidance: should the analyzer suggest the
-  marker-method pattern in its diagnostic, or stay silent on the fix?
+- G06 sealed-interface guidance: settled. The message names the three
+  fixes, because the reader of a diagnostic needs the shape of the
+  repair. 002 records the decision with the rule.
 - Generics: G03 accepts constrained type parameters. Decide whether an
   unconstrained `[T any]` parameter used only for pass-through counts
   as evidence or as laundering. G05 answered the question for itself
   only: it reads no generic function, because Go demands the widening
-  there.
+  there. The widening of a type parameter is settled for G05 and G06
+  together. `internal/signature.MentionsTypeParam` holds the walk, both
+  rules read it, and `switch any(v).(type)` on a parameterized value is
+  clean in both. The scan of the standard library gives 3 of them.

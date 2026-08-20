@@ -22,6 +22,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
@@ -46,6 +47,12 @@ var optInRules = map[string]bool{}
 // key a promise: a key appears here only when a rule reads it, and a
 // key that ships stays.
 type Settings struct {
+	// BoundaryPackages names the package path patterns that decode
+	// input. Rule G06 accepts a type switch on an any value there. 003
+	// states the pattern syntax. An empty list names no boundary, which
+	// is the default of the rule.
+	BoundaryPackages []string `json:"boundary-packages"`
+
 	// ReflectAllow names the package path patterns that may import
 	// reflect. Rule G07 reads it. 003 states the pattern syntax. An
 	// empty list allows no package, which is the default of the rule.
@@ -106,7 +113,10 @@ func (p *plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 func (p *plugin) configured() []*analysis.Analyzer {
 	all := slices.Clone(antislop.Analyzers())
 	for i, a := range all {
-		if a.Name == noreflect.Analyzer.Name {
+		switch a.Name {
+		case noadhoctypeswitch.Analyzer.Name:
+			all[i] = noadhoctypeswitch.New(p.settings.BoundaryPackages)
+		case noreflect.Analyzer.Name:
 			all[i] = noreflect.New(p.settings.ReflectAllow)
 		}
 	}

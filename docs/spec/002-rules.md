@@ -283,6 +283,10 @@ The test reads a type parameter in these places:
 A generic function that launders a value of another type still gets a
 report. 003 keeps the wider open question about type parameters.
 
+`internal/signature` holds this walk, and rule G06 reads it for the
+same shape in a type switch. One expression therefore gets one answer
+from both rules.
+
 These exemptions come from a scan of the whole standard library, tests
 included. The scan reported 34 findings before them and 3 after, and
 every one of the 3 is a widening that an assertion takes back.
@@ -313,15 +317,10 @@ a diagnostic there has no reader who can act on it.
 ## G06 `noadhoctypeswitch`: no ad hoc type switches on `any` (error)
 
 A type switch over an `any` value re-parses data away from its
-boundary. Branch on a domain value instead: a kind field, a sealed
-interface with a marker method, or distinct handler functions.
-
-Allowed positions, because Go idiom requires them there:
-
-- inside functions the configuration marks as decode boundaries,
-- `error` values handled with `errors.As` / `errors.Is` (see G10),
-- implementations of `fmt.Formatter`, marshalers, and similar
-  external contracts.
+boundary. The program knew the type at an earlier line, and the switch
+asks for it again. Every new case adds a shape that the reader of the
+function must hold. Branch on a domain value instead: a kind field, a
+sealed interface with a marker method, or one handler for each type.
 
 Rejected:
 
@@ -343,6 +342,261 @@ type Message interface{ isMessage() }
 
 func handle(msg Message) { ... }
 ```
+
+### What the rule reads
+
+The rule reads the guard of a type switch and the static type of its
+operand. It reports `switch x.(type)` and `switch v := x.(type)` where
+that type is the empty interface. An alias, such as `type A = any`, is
+the same type, so the rule reports its use sites. A defined type, such
+as `type Payload any`, is a domain type of the package, so the rule
+accepts it. G03 and G04 read a signature with the same test, and one
+implementation serves the three rules.
+
+The diagnostic sits at the `.(` token of the guard. A switch holds one
+guard, so a switch with six cases gets one diagnostic, never six. A
+switch with an init statement holds the same guard. A switch inside
+another switch is a switch of its own, and it gets its own diagnostic.
+
+Every operand of the empty interface type gets a report. The list holds
+a parameter, a local variable, and a conversion such as `any(v)`. It
+holds a call that returns `any`, a field of a struct, and a named
+result. A local variable that a widening filled gets a report from G05
+as well, and the fix there is to delete the widening. Where the value is dynamic in truth, the fix of
+G06 is the domain value.
+
+**The rule reads no single assertion.** `v.(T)` is another shape. G01
+asks for the `SAFETY:` justification of it, and G05 reads the widening
+in front of it. G06 reads the guard of a switch, which names no target
+type, and nothing else.
+
+**The rule reads no error.** The predeclared `error` type is an
+interface with a method. It is therefore no empty interface, and no
+error operand reaches this rule. G10 owns that shape, and the fix there
+is `errors.As`. The division is structural, and no setting moves a
+switch from one rule to the other.
+
+**The rule reads no type parameter.** Go reads a value of a
+parameterized type through an interface only. `switch any(v).(type)` is
+therefore the one way to branch on the instantiation, and the widening
+is no choice of the author. The rule accepts the switch where the type
+of `v` holds a type parameter. G05 accepts the same widening in an
+assertion, and `internal/signature` holds the one walk that both rules
+read. The test reads a conversion and no call: a function that returns
+`any` hides the type behind a signature, and the author wrote that
+signature.
+
+### The boundary packages
+
+A program reads a dynamic type somewhere: at the boundary where bytes
+become values. The `boundary-packages` setting of the plugin, and the
+`-noadhoctypeswitch.boundary` flag of the standalone binary, take
+package path patterns. Every type switch of a package whose import path
+matches one pattern is clean. 003 states the pattern syntax and the two
+configuration paths.
+
+The rule drops a trailing `_test` from the import path before it reads
+the patterns. One entry therefore covers a package and its external
+test package. The drop works in one direction only, and it is silent.
+G07 states the two consequences of that rule, and both hold here word
+for word. An entry that names an external test package matches nothing.
+An entry that names a production package also allows a real package
+whose own path ends in `_test`.
+
+The design puts the decoding in a boundary package, and the pattern
+names that package:
+
+```yaml
+boundary-packages:
+  - "example.com/app/internal/ingest"
+```
+
+**What the entry buys, and what it does not.** The entry silences G06
+in that package, and nothing else. The decode function of such a
+package usually takes an `any` parameter or returns one, and G03 and
+G04 still report those signatures. `CONTRACT:` does not fit there. No
+external API sets the signature of a decoder that the project itself
+wrote, and the comment must name such an API.
+
+A project therefore answers G03 and G04 in the boundary package in one
+of two ways today. It names `noanyparam` or `noanyreturn` in the
+`disable` setting, which drops the rule everywhere. Or it accepts the
+findings of that one package, where the `any` is the point of the
+design. Neither answer is a mechanism of this rule set, and this
+specification invents none. A per-package toggle is a golangci-lint
+question, and 003 records the `//nolint:antislop` directive that path
+already carries.
+
+### The evidence of an external contract
+
+An external API can force an `any` parameter on a function of this
+project. The section "The external contract exemption" states the two
+kinds of evidence that G03 accepts for such a parameter. The first is
+an interface of an imported package that declares the parameter. The
+second is a `CONTRACT:` comment above the declaration that names the
+API.
+
+G06 accepts the same evidence for the operand of a switch. The operand
+must be a parameter, and the signature that declares it must be exempt
+under G03 at that position. The switch is then the legitimate
+consumption of that contract. `database/sql.Scanner`, with
+`Scan(src any) error`, is the case that the interface evidence covers.
+An implementation of it must accept the empty interface, and it must
+read the dynamic type of the value to fill its destination.
+
+A comment carries the evidence that no interface states. A call that
+sets a signature, such as the registration of a handler, is invisible
+to the analyzer:
+
+```go
+// CONTRACT: bus.Subscribe sets the signature of a handler.
+func onEvent(payload any) {
+    switch p := payload.(type) { // clean: the comment admits the parameter
+    case Ping:
+        ...
+    }
+}
+
+func init() { bus.Subscribe(onEvent) }
+```
+
+Where the parameter carries no such evidence, G03 reports the signature
+and G06 reports the switch. The two findings have one cause, and the
+signature is the one to fix. A parameter with a domain type leaves the
+switch nothing to ask.
+
+The signature that declares the parameter answers the question. A
+function literal therefore answers for its own parameter, whatever the
+comment above the function around it. It keeps the answer of the
+function around it for a parameter that it reads from there. A literal
+stored in a contracted field takes the comment above the statement that
+holds it, which is the placement rule of `CONTRACT:` in 003.
+
+**The evidence reads the parameter itself, and no copy of it.** The
+rule compares the operand against the variables of the signature, so a
+new variable loses the exemption:
+
+```go
+// CONTRACT: bus.Subscribe sets the signature of a handler.
+func onEvent(payload any) {
+    w := payload
+    switch w.(type) { // reported: w is a new variable
+    ...
+    }
+    payload = normalize(payload)
+    switch payload.(type) { // clean: the parameter keeps its contract
+    ...
+    }
+}
+```
+
+The message misdirects there. It asks for a boundary entry or a domain
+value, and a `CONTRACT:` comment already sits three lines above. The
+author switches on the parameter itself, or names the package as a
+boundary. A test that follows a copy needs the value graph that 003
+describes for G05, and this rule builds none.
+
+The two other exemptions of G03 are no evidence here. The name `cause`
+and the `fmt`-style variadic tail describe the use of a parameter, and
+neither one names an API that sets the signature. A switch on such a
+parameter keeps its report.
+
+### What the rule leaves alone
+
+- **A generated file**, which `go/ast` recognises by the
+  `Code generated ... DO NOT EDIT.` header. A program writes the file,
+  so a diagnostic there has no reader who can act on it.
+- **A package that a boundary pattern names**, in every file of it.
+- **An operand that is no empty interface**: an error, a defined type,
+  and every interface with a method.
+- **A conversion that widens a type parameter**, which Go demands.
+
+### Decisions the rule states
+
+**No comment above the switch stops a report.** The justification
+belongs to the signature that admitted the `any` value, where the
+reader of the API stands. A `CONTRACT:` comment above the switch
+statement itself justifies nothing, and a fixture pins that. A comment
+there would also justify a switch on a local variable, which no
+external API can set.
+
+**A test file gets no exemption.** A test that reads the dynamic type
+of an `any` value builds the same table of shapes that production code
+builds. The fix is the same domain value.
+
+**`recover()` gets a report, and neither escape reaches it.** `recover`
+returns `any`, because the language sets that signature. The operand is
+a call and no parameter, so no `CONTRACT:` comment covers it. The
+package that recovers is no decode boundary either. The escape is
+therefore the `disable` setting, or the fix itself. The program owns
+the value it panicked with. A comma-ok assertion against the sentinel
+type of the package answers the question, and it needs no case for
+every shape. The
+known bite is the shape of `go/types`, which recovers a `bailout` value
+and re-panics on every other value. The scan below holds 7 such
+switches, 5 of them in tests that read a panic message.
+
+**Two shapes give one finding and no signature to fix.** G03 accepts a
+parameter named `cause`, and it accepts the variadic tail of an
+`fmt`-style helper. Neither name is evidence here, so a switch on such
+a parameter reports while the signature stays clean. The reader then
+gets one finding with no second one to guide the repair. The answers
+are the answers of this rule: a domain value in the signature, or a
+boundary entry for a package that decodes.
+
+**The message names the problem and one direction.** 003 asked whether
+the diagnostic should suggest the marker-method pattern or stay silent.
+The message names the problem and one direction for the repair, and it
+stays inside the length of the family. The three shapes of the fix sit
+in this entry, which the `URL` field of the analyzer names. The message
+names both spellings of the boundary setting, because the reader of a
+diagnostic runs one of two tools.
+
+### Measurement
+
+A scan of the whole standard library, tests included, reports 110
+findings in 71 files and 46 packages. The scan ran the standalone
+binary over `./...` in `GOROOT/src` with Go 1.26.2 on darwin/arm64, and
+with no boundary pattern.
+
+79 findings sit in production files of 31 packages, and 31 sit in test
+files. Three packages hold 26 of the production findings.
+`database/sql` gives 11, in `convert.go`, which turns a value of a
+driver into the destination of a `Scan` call. `crypto/tls` gives 10.
+They read `hc.cipher`, an `any` field that holds one of two cipher
+shapes, and they read `crypto.PublicKey`, which the standard library
+declares as `any`. `net/http` gives 5, all in `transfer.go`, which
+passes a request or a response through an `any` parameter.
+`database/sql/driver`, `encoding/binary`, `encoding/json`,
+`encoding/xml`, `encoding/asn1`, `fmt`, `log/slog`, `text/template`,
+and `html/template` hold most of the rest.
+
+Every one of those packages is a boundary entry. They convert bytes to
+values, or values to bytes, and the type switch is their work. A
+project that writes such a package names it in `boundary-packages`, and
+the rule then reports the switches that leaked out of it. `log/slog`
+shows the other fix in the same scan. `Value.Kind` switches on the
+`any` field of the value to compute a `Kind`, and a `Kind` field would
+answer without the switch.
+
+Two exemptions hold findings back in that scan. The type-parameter
+walk holds 3: a run without it gives 113, and the three are
+`crypto/internal/fips140/tls12`, `runtime/map_benchmark_test.go`, and
+`runtime/pprof/pprof_test.go`. Each one branches on the instantiation
+of a constrained parameter. The evidence of an external contract holds
+1: `fakeDriverString.ConvertValue` of `database/sql` implements
+`driver.ValueConverter`, and that interface declares the parameter. The
+standard library writes no `CONTRACT:` comment, so the comment side of
+the evidence adds nothing to these numbers.
+
+`golang.org/x/tools` reports 28 findings in 16 packages, 23 of them in
+production files. The largest groups sit in the test harness
+(`internal/packagestest`), in the inliner, and in the JSON-RPC
+transport, which decodes messages.
+
+The volume of this rule is therefore a boundary question and not a code
+question, as with G07. A project writes one entry for each boundary
+package, and the rule reports the ad hoc switches elsewhere.
 
 ## G07 `noreflect`: no reflection outside allowlisted packages (error)
 
