@@ -11,6 +11,7 @@ import (
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
@@ -24,6 +25,36 @@ func registryNames(t *testing.T) []string {
 	}
 
 	return names
+}
+
+// defaultNames returns the rules a run gets with no setting: every rule
+// of the registry, without the opt-in rules.
+func defaultNames(t *testing.T) []string {
+	t.Helper()
+
+	names := registryNames(t)
+	if len(optInRules) == 0 {
+		t.Fatal("optInRules is empty; 002 gives rule G09 an opt-in severity")
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if !optInRules[n] {
+			out = append(out, n)
+		}
+	}
+	if len(out) == len(names) {
+		t.Fatal("no rule of the registry is opt-in; optInRules names a rule the registry does not hold")
+	}
+
+	return out
+}
+
+// defaultRule returns the name of a rule that runs with no setting.
+// enable rejects such a name, and disable takes it.
+func defaultRule(t *testing.T) string {
+	t.Helper()
+
+	return defaultNames(t)[0]
 }
 
 func analyzerNames(as []*analysis.Analyzer) []string {
@@ -104,8 +135,8 @@ func TestNewAcceptsNoSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
 	}
-	if !slices.Equal(analyzerNames(got), registryNames(t)) {
-		t.Errorf("analyzers = %v; want the full rule set %v", analyzerNames(got), registryNames(t))
+	if !slices.Equal(analyzerNames(got), defaultNames(t)) {
+		t.Errorf("analyzers = %v; want the default rule set %v", analyzerNames(got), defaultNames(t))
 	}
 }
 
@@ -128,19 +159,19 @@ func TestNewRejectsUnknownKey(t *testing.T) {
 	}
 }
 
-func TestBuildAnalyzersDefaultsToTheFullRuleSet(t *testing.T) {
+func TestBuildAnalyzersDefaultsToTheDefaultRuleSet(t *testing.T) {
 	got, err := build(t, map[string]any{})
 	if err != nil {
 		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
 	}
-	if !slices.Equal(analyzerNames(got), registryNames(t)) {
-		t.Errorf("analyzers = %v; want the full rule set %v", analyzerNames(got), registryNames(t))
+	if !slices.Equal(analyzerNames(got), defaultNames(t)) {
+		t.Errorf("analyzers = %v; want the default rule set %v", analyzerNames(got), defaultNames(t))
 	}
 }
 
 func TestBuildAnalyzersDropsDisabledRules(t *testing.T) {
-	known := registryNames(t)
-	dropped := known[0]
+	byDefault := defaultNames(t)
+	dropped := byDefault[0]
 
 	got, err := build(t, map[string]any{"disable": []any{dropped}})
 	if err != nil {
@@ -151,8 +182,39 @@ func TestBuildAnalyzersDropsDisabledRules(t *testing.T) {
 	if slices.Contains(names, dropped) {
 		t.Errorf("analyzers = %v; %q is disabled and must not appear", names, dropped)
 	}
-	if len(names) != len(known)-1 {
-		t.Errorf("analyzers = %v; want the other %d rules", names, len(known)-1)
+	if len(names) != len(byDefault)-1 {
+		t.Errorf("analyzers = %v; want the other %d rules", names, len(byDefault)-1)
+	}
+}
+
+// The opt-in severity of 002 reaches the golangci-lint path here: the
+// registry holds rule G09, and a run without the enable setting must
+// not apply it. This test runs the real opt-in set, and not the
+// synthetic one of TestSelectAnalyzersOptIn.
+func TestBuildAnalyzersAppliesTheOptInSeverity(t *testing.T) {
+	optIn := nointerfacereturn.Analyzer.Name
+	if !optInRules[optIn] {
+		t.Fatalf("optInRules does not name %q; 002 gives rule G09 an opt-in severity", optIn)
+	}
+
+	byDefault, err := build(t, map[string]any{})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+	if names := analyzerNames(byDefault); slices.Contains(names, optIn) {
+		t.Errorf("analyzers = %v; %q is opt-in and enable does not name it", names, optIn)
+	}
+
+	enabled, err := build(t, map[string]any{"enable": []any{optIn}})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+	names := analyzerNames(enabled)
+	if !slices.Contains(names, optIn) {
+		t.Errorf("analyzers = %v; enable names %q, so the run must apply it", names, optIn)
+	}
+	if !slices.Equal(names, registryNames(t)) {
+		t.Errorf("analyzers = %v; want every rule %v", names, registryNames(t))
 	}
 }
 
@@ -160,9 +222,9 @@ func TestBuildAnalyzersDropsDisabledRules(t *testing.T) {
 // choice, so naming it is a mistake and the run stops. This keeps the
 // setting from looking as if it did something.
 func TestBuildAnalyzersRejectsADefaultOnRuleInEnable(t *testing.T) {
-	known := registryNames(t)
+	onByDefault := defaultRule(t)
 
-	got, err := build(t, map[string]any{"enable": []any{known[0]}})
+	got, err := build(t, map[string]any{"enable": []any{onByDefault}})
 	if err == nil {
 		t.Fatalf("BuildAnalyzers accepted a default-on rule in enable and returned %v; want an error", analyzerNames(got))
 	}
@@ -171,7 +233,7 @@ func TestBuildAnalyzersRejectsADefaultOnRuleInEnable(t *testing.T) {
 	if !strings.Contains(message, "enable") {
 		t.Errorf("the error does not name the setting: %v", err)
 	}
-	if !strings.Contains(message, known[0]) {
+	if !strings.Contains(message, onByDefault) {
 		t.Errorf("the error does not name the rule: %v", err)
 	}
 	if !strings.Contains(message, "on by default") {
@@ -179,8 +241,9 @@ func TestBuildAnalyzersRejectsADefaultOnRuleInEnable(t *testing.T) {
 	}
 }
 
-// No rule is opt-in today, so the filter needs a set of its own to
-// exercise. selectAnalyzers is a pure function for that reason.
+// The filter itself takes the opt-in set as a parameter, so this test
+// gives it one and reads the three answers on any rule.
+// TestBuildAnalyzersAppliesTheOptInSeverity runs the real set.
 func TestSelectAnalyzersOptIn(t *testing.T) {
 	all := antislop.Analyzers()
 	known := registryNames(t)

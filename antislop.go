@@ -9,6 +9,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyreturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noerrorassert"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nolaundering"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nomonkeypatch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
@@ -16,9 +17,16 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/safetyassert"
 )
 
-// Analyzers returns every analyzer this module provides.
-// Consumers register the full list; rule toggles happen in the
-// consumer's configuration, not here.
+// Analyzers returns every analyzer this module provides, an opt-in rule
+// included. Consumers register the full list; rule toggles happen in
+// the consumer's configuration, not here.
+//
+// One registry serves the three consumption paths of 003. The
+// golangci-lint plugin reads a configuration file, so it applies the
+// opt-in severity of 002 and drops such a rule until enable names it.
+// cmd/antislop and go vet -vettool read no configuration file, so they
+// run every rule. The reader turns one off with the -NAME=false flag
+// that multichecker gives each analyzer.
 func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
 		safetyassert.Analyzer,      // G01
@@ -29,6 +37,7 @@ func Analyzers() []*analysis.Analyzer {
 		noadhoctypeswitch.Analyzer, // G06
 		noreflect.Analyzer,         // G07
 		nomonkeypatch.Analyzer,     // G08
+		nointerfacereturn.Analyzer, // G09, opt-in
 		noerrorassert.Analyzer,     // G10
 	}
 }

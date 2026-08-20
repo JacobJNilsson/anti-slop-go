@@ -77,8 +77,13 @@ them here:
 - `errcheck`: ignored error returns.
 - `forcetypeassert`: type assertions without the comma-ok form. Rule
   G01 supersedes it with the `SAFETY:` requirement; use one, not both.
-- `ireturn`: "accept interfaces, return concrete types". Rule G09
-  overlaps; the configuration section explains the split.
+- `ireturn`: "accept interfaces, return concrete types". `ireturn`
+  reports an interface result by its type, and an allowlist holds the
+  types a project accepts. Rule G09 asks a narrower question: it
+  reports a result only where the body builds one concrete type through
+  every path. A function with two implementations behind one interface
+  stays clean under G09 and reports under `ireturn`. Enable the one
+  that fits the project. G09 is opt-in and needs no allowlist.
 - `staticcheck`, `govet`, `revive`: general correctness and idiom.
 - `depguard`: a deny list of import paths. It covers the plain half of
   rule G07, which is "no package imports `reflect`". G07 keeps its own
