@@ -8,14 +8,19 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Implementation phase. Ten analyzers are available. Nine run by
+Implementation phase. Eleven analyzers are available. Nine run by
 default: `safetyassert` (rule G01), `nountypedmap` (G02), `noanyparam`
 (G03), `noanyreturn` (G04), `nolaundering` (G05), `noadhoctypeswitch`
 (G06), `noreflect` (G07), `nomonkeypatch` (G08), and `noerrorassert`
-(G10). One is opt-in: `nointerfacereturn` (G09) reports an interface
-result that every return of the body builds from one concrete type. It
-asks a project to change signatures, so it stays off until the
-configuration turns it on.
+(G10). Two are opt-in. `nointerfacereturn` (G09) reports an interface
+result that every return of the body builds from one concrete type; it
+asks a project to change signatures. `justifypanic` (G11) asks for a
+`// PANICS:` comment above a `panic`, a `log.Fatal`, or an `os.Exit`
+of library code. The golangci-lint plugin keeps both off until the
+`enable` setting names them. The standalone binary and `go vet
+-vettool` read no configuration file, so they run every rule, and
+`-nointerfacereturn=false` or `-justifypanic=false` turns one off
+there.
 Read the specification in [`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
@@ -76,6 +81,7 @@ linters:
             - example.com/app/internal/codec
           enable:
             - nointerfacereturn
+            - justifypanic
           disable:
             - nountypedmap
 ```
@@ -96,13 +102,13 @@ Eight points about this file:
 - `disable` drops a rule from the default set, which holds the nine
   rules that the Status section names as default rules. A configuration
   that disables every rule is legal, and the linter then reports
-  nothing. `enable` turns on an opt-in rule, and `nointerfacereturn` is
-  the one opt-in rule today. A name that is on by default stops the
-  run, because `enable` would do nothing for it.
+  nothing. `enable` turns on an opt-in rule: `nointerfacereturn` and
+  `justifypanic` are the opt-in rules today. A name that is on by
+  default stops the run, because `enable` would do nothing for it.
 - The standalone binary and `go vet -vettool` read no configuration
-  file, so they run every rule, the opt-in one included. Each analyzer
-  has a flag of its own there: `-nointerfacereturn=false` drops one
-  rule, and `-nointerfacereturn` runs that rule alone.
+  file, so they run every rule, the opt-in ones included. Each analyzer
+  has a flag of its own there: `-justifypanic=false` drops one rule,
+  and `-justifypanic` runs that rule alone.
 - Two settings name packages by path pattern. A pattern matches the
   whole import path: `*` holds inside one segment, `...` crosses a
   slash, and a pattern that ends in `/...` names the package above it

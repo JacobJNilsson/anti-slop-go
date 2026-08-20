@@ -84,62 +84,13 @@ func run(pass *analysis.Pass) (any, error) {
 // candidateLines returns the lines a SAFETY comment may end directly
 // above: the line of the assertion, the line of its .( token for a
 // multi-line operand, and the lines of the statements that contain it.
+//
+// The statements come from the shared walk of the justification
+// contract, which rule G11 reads as well. The .( token is the candidate
+// of this rule alone: an operand that spans lines pushes the token below
+// the line where the assertion starts.
 func candidateLines(fset *token.FileSet, assert *ast.TypeAssertExpr, stack []ast.Node) []int {
 	lines := []int{signature.LineOf(fset, assert.Pos()), signature.LineOf(fset, assert.Lparen)}
-	for _, stmt := range enclosingStmts(stack) {
-		lines = append(lines, signature.LineOf(fset, stmt.Pos()))
-	}
-	return lines
-}
 
-// enclosingStmts returns the innermost statement that holds the node and
-// the outermost statement below the enclosing block. The second one
-// accepts a comment above an `if` whose init statement holds the
-// assertion. A package-level declaration has no enclosing statement, so
-// the result is empty.
-func enclosingStmts(stack []ast.Node) []ast.Stmt {
-	var inner, outer ast.Stmt
-	for i := len(stack) - 1; i >= 0; i-- {
-		if _, isBlock := stack[i].(*ast.BlockStmt); isBlock {
-			break
-		}
-		stmt, isStmt := stack[i].(ast.Stmt)
-		if !isStmt {
-			continue
-		}
-		// A case or a communication clause holds a statement list, not a
-		// block, so the block test above does not stop the walk. The
-		// clause line is the line above the first statement of the list
-		// only. A later statement in the same clause needs its own
-		// comment.
-		if body, isClause := clauseBody(stmt); isClause {
-			if len(body) == 0 || body[0] != outer {
-				break
-			}
-		}
-		if inner == nil {
-			inner = stmt
-		}
-		outer = stmt
-	}
-	var stmts []ast.Stmt
-	if inner != nil {
-		stmts = append(stmts, inner)
-	}
-	if outer != nil && outer != inner {
-		stmts = append(stmts, outer)
-	}
-	return stmts
-}
-
-// clauseBody returns the statement list of a case clause or of a
-// communication clause, and reports whether the statement is one.
-func clauseBody(stmt ast.Stmt) ([]ast.Stmt, bool) {
-	switch clause := stmt.(type) {
-	case *ast.CaseClause:
-		return clause.Body, true
-	case *ast.CommClause:
-		return clause.Body, true
-	}
-	return nil, false
+	return append(lines, signature.EnclosingStmtLines(fset, stack)...)
 }

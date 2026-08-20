@@ -74,6 +74,84 @@ func LineOf(fset *token.FileSet, pos token.Pos) int {
 	return fset.PositionFor(pos, false).Line
 }
 
+// EnclosingStmtLines returns the lines of the statements that hold the
+// node at the top of stack: the innermost statement, and the outermost
+// statement below the enclosing block. A rule adds them to its
+// candidate lines, so a justification above the statement covers the
+// code inside it.
+//
+// The walk stops at a block. A comment above a block would justify
+// every statement inside it, whatever the length of the body, and the
+// reader of the flagged line would stand far from it.
+//
+// A case clause and a communication clause hold a statement list and no
+// block, so the block test does not stop the walk there. The line of a
+// clause sits above the first statement of the list only, and a later
+// statement of the same clause needs its own comment.
+//
+// A node outside every statement, such as one in a package-level
+// declaration, gives no line.
+//
+// This walk is the placement rule of the justification contract of
+// docs/spec/003-implementation.md. One implementation serves every
+// marker, so the rules cannot drift apart. A rule adds the candidate
+// lines of its own shape, such as the line of a token that a
+// multi-line operand pushes down.
+func EnclosingStmtLines(fset *token.FileSet, stack []ast.Node) []int {
+	var lines []int
+	for _, stmt := range enclosingStmts(stack) {
+		lines = append(lines, LineOf(fset, stmt.Pos()))
+	}
+
+	return lines
+}
+
+// enclosingStmts returns the innermost statement that holds the node
+// and the outermost statement below the enclosing block.
+func enclosingStmts(stack []ast.Node) []ast.Stmt {
+	var inner, outer ast.Stmt
+	for i := len(stack) - 1; i >= 0; i-- {
+		if _, isBlock := stack[i].(*ast.BlockStmt); isBlock {
+			break
+		}
+		stmt, isStmt := stack[i].(ast.Stmt)
+		if !isStmt {
+			continue
+		}
+		if body, isClause := clauseBody(stmt); isClause {
+			if len(body) == 0 || body[0] != outer {
+				break
+			}
+		}
+		if inner == nil {
+			inner = stmt
+		}
+		outer = stmt
+	}
+	var stmts []ast.Stmt
+	if inner != nil {
+		stmts = append(stmts, inner)
+	}
+	if outer != nil && outer != inner {
+		stmts = append(stmts, outer)
+	}
+
+	return stmts
+}
+
+// clauseBody returns the statement list of a case clause or of a
+// communication clause, and reports whether the statement is one.
+func clauseBody(stmt ast.Stmt) ([]ast.Stmt, bool) {
+	switch clause := stmt.(type) {
+	case *ast.CaseClause:
+		return clause.Body, true
+	case *ast.CommClause:
+		return clause.Body, true
+	}
+
+	return nil, false
+}
+
 // commentIndex answers the question "does a whole-line comment end on
 // this line of this file?" for every comment of the package. It holds
 // no marker, so the same code serves every rule. Each pass builds its

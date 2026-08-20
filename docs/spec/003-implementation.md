@@ -136,9 +136,9 @@ linters:
             - justifypanic
 ```
 
-The example shows the target state. `boundary-packages`, `enable`,
-`disable`, and `reflect-allow` exist today. `nointerfacereturn` is the
-opt-in rule that ships; `justifypanic` arrives in M4.
+Every key of the example exists today: `boundary-packages`, `enable`,
+`disable`, and `reflect-allow`. `nointerfacereturn` (G09) and
+`justifypanic` (G11) are the opt-in rules that `enable` names.
 
 Semantics:
 
@@ -246,6 +246,21 @@ One implementation enforces this contract for every rule.
 the expression. The `Justifications` value it returns runs the position
 tests. A rule supplies its marker word and its candidate lines, and
 nothing else.
+
+One implementation states the placement rule as well.
+`internal/signature.EnclosingStmtLines` walks the syntax stack and
+returns the line of the innermost statement, and the line of the
+outermost statement below the enclosing block. It stops at a block, and
+it holds the rule of a case clause and of a communication clause. G01
+and G11 both read it, so the two rules cannot drift apart.
+
+A rule adds the candidate lines of its own shape, and each one is
+listed here:
+
+- G01 adds the line of the `.(` token of the assertion. An operand that
+  spans lines pushes that token below the line where the assertion
+  starts.
+- G11 adds nothing. A call starts where it starts.
 
 ## Milestones
 
