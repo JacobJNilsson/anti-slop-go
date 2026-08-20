@@ -41,6 +41,11 @@ The comment must sit directly above the assertion or above its
 containing statement, and must match `SAFETY:`.
 This rule supersedes `forcetypeassert`.
 
+The rule skips generated files, which `go/ast` recognises by the
+`Code generated ... DO NOT EDIT.` header. Nobody edits a generated file
+to add a justification, so a diagnostic there is noise the project
+cannot fix.
+
 ## G02 `nountypedmap`: no untyped maps in signatures and fields (error)
 
 `map[string]any`, `map[string]interface{}`, and maps with `any` values
