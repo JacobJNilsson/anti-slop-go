@@ -23,6 +23,7 @@ import (
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
@@ -34,11 +35,16 @@ const name = "antislop"
 func init() { register.Plugin(name, New) }
 
 // optInRules names the rules that a project turns on deliberately.
-// Specification 002 gives some rules an opt-in severity: G09
-// (nointerfacereturn) and G11 (justifypanic) join this set when they
-// arrive. Such a rule stays off until the enable setting names it. The
-// set is empty today, so every rule is on by default.
-var optInRules = map[string]bool{}
+// Specification 002 gives some rules an opt-in severity, and such a
+// rule stays off until the enable setting names it. G11 (justifypanic)
+// joins this set when it arrives.
+//
+// This set is where the opt-in severity takes effect. The registry of
+// the module holds every rule, because cmd/antislop and go vet read no
+// configuration file. 003 records that split.
+var optInRules = map[string]bool{
+	nointerfacereturn.Analyzer.Name: true, // G09
+}
 
 // Settings is the configuration surface of the plugin. golangci-lint
 // decodes the linters.settings.custom.antislop.settings block into
@@ -79,8 +85,10 @@ type plugin struct {
 // from the configuration file. It returns an error for a malformed
 // settings block, and golangci-lint stops the run.
 //
-// CONTRACT: register.NewPlugin fixes this signature, so the parameter
-// type is any.
+// CONTRACT: register.NewPlugin fixes this whole signature. The
+// parameter type is therefore any, and the result is the
+// register.LinterPlugin interface, although this function builds one
+// concrete plugin.
 func New(conf any) (register.LinterPlugin, error) {
 	settings, err := register.DecodeSettings[Settings](conf)
 	if err != nil {

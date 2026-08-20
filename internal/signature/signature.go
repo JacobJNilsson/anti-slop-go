@@ -51,13 +51,39 @@ const contractMarker = "CONTRACT"
 type Contracts struct {
 	pass           *analysis.Pass
 	justifications *Justifications
-	ifaces         []*types.Interface
-	ifacesDone     bool
+	// home widens the interface scan to the package under analysis.
+	home       bool
+	ifaces     []*types.Interface
+	ifacesDone bool
 }
 
-// NewContracts prepares the shared tests for one pass.
+// NewContracts prepares the shared tests for one pass. The interface
+// scan reads the directly imported packages only. An interface of the
+// package under analysis is code the author owns, so it fixes nothing
+// that the author cannot change.
+//
+// Rules G03 and G06 take this entry. Both read a parameter, and the
+// author of a local interface can widen the parameter of that
+// interface with the parameter of the method.
 func NewContracts(pass *analysis.Pass) *Contracts {
-	return &Contracts{pass: pass, justifications: NewJustifications(pass, contractMarker)}
+	return newContracts(pass, false)
+}
+
+// NewContractsWithHome prepares the same tests, and the interface scan
+// reads the package under analysis as well.
+//
+// Rule G09 takes this entry, because it reports a result. A method
+// cannot narrow a result that a local interface declares: the concrete
+// type no longer satisfies that interface, and the package stops
+// compiling. The advice of the rule must compile, so such a method is
+// no finding. The scan reads an unexported local interface too, because
+// the compiler answers the same way for it. 002 states both stances.
+func NewContractsWithHome(pass *analysis.Pass) *Contracts {
+	return newContracts(pass, true)
+}
+
+func newContracts(pass *analysis.Pass, home bool) *Contracts {
+	return &Contracts{pass: pass, home: home, justifications: NewJustifications(pass, contractMarker)}
 }
 
 // Generated reports whether pos sits in a generated file. Both rules
@@ -113,19 +139,22 @@ func (c *Contracts) Implements(parent ast.Node, matches func(declared *types.Sig
 	return false
 }
 
-// interfaces returns the exported interfaces with a method set that the
-// directly imported packages declare. The list is built once, and only
-// when a signature needs it.
+// interfaces returns the interfaces with a method set that the scan
+// reads: the exported ones of the directly imported packages, and every
+// one of the package under analysis when the caller asked for the home
+// package. The list is built once, and only when a signature needs it.
 func (c *Contracts) interfaces() []*types.Interface {
 	if c.ifacesDone {
 		return c.ifaces
 	}
 	c.ifacesDone = true
-	for _, imported := range c.pass.Pkg.Imports() {
-		scope := imported.Scope()
+	for _, source := range c.sources() {
+		scope := source.Scope()
 		for _, name := range scope.Names() {
 			declared, isType := scope.Lookup(name).(*types.TypeName)
-			if !isType || !declared.Exported() {
+			// An unexported type of an imported package names no
+			// signature that the package under analysis can write.
+			if !isType || (!declared.Exported() && source != c.pass.Pkg) {
 				continue
 			}
 			iface, isIface := declared.Type().Underlying().(*types.Interface)
@@ -140,6 +169,20 @@ func (c *Contracts) interfaces() []*types.Interface {
 		}
 	}
 	return c.ifaces
+}
+
+// sources returns the packages the interface scan reads. The package
+// under analysis comes first, because a method that a local interface
+// fixes needs no further search.
+func (c *Contracts) sources() []*types.Package {
+	imports := c.pass.Pkg.Imports()
+	if !c.home {
+		return imports
+	}
+
+	// The slice of the type checker belongs to the package, so the copy
+	// keeps this function from writing to it.
+	return append([]*types.Package{c.pass.Pkg}, imports...)
 }
 
 // externalSignature returns the signature of the method that iface

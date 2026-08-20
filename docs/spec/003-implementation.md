@@ -31,8 +31,13 @@ anti-slop-go/
 - `internal/signature` holds the machinery that more than one rule
   needs: the generated-file test that every rule applies, the
   justification comment contract below, the signature tests that G03,
-  G04, and G06 share, and the type-parameter walk that G05 and G06
-  share. One implementation of a contract cannot drift from itself.
+  G04, G06, and G09 share, and the type-parameter walk that G05, G06,
+  and G09 share. The interface scan of the signature tests has two
+  entry points. `NewContracts` reads the imported packages, and
+  `NewContractsWithHome` reads the package under analysis as well. G09
+  takes the second one, because a method cannot narrow a result that a
+  local interface declares. 002 states both stances with the rules that
+  hold them. One implementation of a contract cannot drift from itself.
 - `internal/pathmatch` holds the package path patterns that the
   settings use. The Configuration section states their syntax.
 - Tests use `analysistest` with `testdata` packages. Every rule ships
@@ -132,8 +137,8 @@ linters:
 ```
 
 The example shows the target state. `boundary-packages`, `enable`,
-`disable`, and `reflect-allow` exist today; the rules that `enable`
-names arrive in M4.
+`disable`, and `reflect-allow` exist today. `nointerfacereturn` is the
+opt-in rule that ships; `justifypanic` arrives in M4.
 
 Semantics:
 
@@ -151,6 +156,34 @@ Semantics:
   Both settings reject a name that is not a rule, and the run stops. A
   configuration that disables every rule is legal; the linter then
   reports nothing.
+
+### Opt-in rules and the three paths
+
+The module holds one registry. `antislop.Analyzers()` returns every
+rule, an opt-in rule included, and the three consumption paths read
+that one list. The opt-in severity of 002 takes effect in the plugin,
+because the plugin is the path that reads a configuration file.
+`optInRules` in `plugin/plugin.go` names such a rule, and
+`BuildAnalyzers` drops it until `enable` names it.
+
+The other two paths read no configuration file, so they run every rule.
+Their switch is the flag that `multichecker` and `go vet` give to each
+analyzer. A test with `cmd/antislop` and with Go 1.26.2 verified both
+directions. `-nointerfacereturn=false` drops one rule and keeps the
+rest. `-nointerfacereturn` alone selects that rule and drops the rest,
+which is the form the measurement scans use. `go vet
+-vettool=./antislop -nointerfacereturn=false ./...` gave the same
+result, because `go vet` passes an unknown flag to the tool.
+
+The alternative was a second registry function, such as
+`DefaultAnalyzers` beside `OptInAnalyzers`. The project rejected it. A
+consumer that ranges over `Analyzers()` must see every rule the module
+holds. A rule that the list drops disappears from `go vet`, with no
+diagnostic and no setting to bring it back. Two lists also split the
+definition of the rule set across two packages, and the plugin already
+owns the settings.
+`antislop_test.go` pins the registry membership of the opt-in rule for
+that reason.
 
 A test with golangci-lint v2.10.1 verified this path end to end. The
 project held two packages, and each one imported `reflect`.
@@ -181,7 +214,7 @@ a reason on every directive enables the `nolintlint` linter.
 ## The justification comment contract
 
 Three markers share one contract: `SAFETY:` (G01), `PANICS:` (G11),
-and `CONTRACT:` (G03 and G04).
+and `CONTRACT:` (G03, G04, and G09).
 
 - The comment sits directly above the flagged statement, or above the
   statement that contains it.

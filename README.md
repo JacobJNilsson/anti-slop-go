@@ -8,11 +8,14 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Implementation phase. Nine analyzers are available, and all nine run
-by default: `safetyassert` (rule G01), `nountypedmap` (G02),
-`noanyparam` (G03), `noanyreturn` (G04), `nolaundering` (G05),
-`noadhoctypeswitch` (G06), `noreflect` (G07), `nomonkeypatch` (G08),
-and `noerrorassert` (G10).
+Implementation phase. Ten analyzers are available. Nine run by
+default: `safetyassert` (rule G01), `nountypedmap` (G02), `noanyparam`
+(G03), `noanyreturn` (G04), `nolaundering` (G05), `noadhoctypeswitch`
+(G06), `noreflect` (G07), `nomonkeypatch` (G08), and `noerrorassert`
+(G10). One is opt-in: `nointerfacereturn` (G09) reports an interface
+result that every return of the body builds from one concrete type. It
+asks a project to change signatures, so it stays off until the
+configuration turns it on.
 Read the specification in [`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
@@ -71,11 +74,13 @@ linters:
             - example.com/app/internal/ingest
           reflect-allow:
             - example.com/app/internal/codec
+          enable:
+            - nointerfacereturn
           disable:
             - nountypedmap
 ```
 
-Seven points about this file:
+Eight points about this file:
 
 - `type: module` is necessary. Without it, golangci-lint looks for a
   shared object file.
@@ -88,11 +93,16 @@ Seven points about this file:
   individual rules with the plugin's own `enable` and `disable`
   settings, not with `linters.enable`. An unknown rule name in either
   plugin setting stops the run.
-- `disable` drops a rule from the default set, which holds the rules
-  that the Status section names. A configuration that disables every
-  rule is legal, and the linter then reports nothing. `enable` turns on
-  an opt-in rule. No rule is opt-in yet, so `enable` takes no name
-  today, and a name that is on by default stops the run.
+- `disable` drops a rule from the default set, which holds the nine
+  rules that the Status section names as default rules. A configuration
+  that disables every rule is legal, and the linter then reports
+  nothing. `enable` turns on an opt-in rule, and `nointerfacereturn` is
+  the one opt-in rule today. A name that is on by default stops the
+  run, because `enable` would do nothing for it.
+- The standalone binary and `go vet -vettool` read no configuration
+  file, so they run every rule, the opt-in one included. Each analyzer
+  has a flag of its own there: `-nointerfacereturn=false` drops one
+  rule, and `-nointerfacereturn` runs that rule alone.
 - Two settings name packages by path pattern. A pattern matches the
   whole import path: `*` holds inside one segment, `...` crosses a
   slash, and a pattern that ends in `/...` names the package above it

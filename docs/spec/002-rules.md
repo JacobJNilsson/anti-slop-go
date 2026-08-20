@@ -924,13 +924,13 @@ carry the shape that the rule states, so both get a report.
 ## G09 `nointerfacereturn`: return concrete types for known values (opt-in)
 
 A function that always builds one concrete type must return that type,
-not an interface. The caller keeps the evidence and the methods.
-`error` returns are exempt. This overlaps with `ireturn`; enable one.
+not an interface. The caller keeps the evidence and the methods that
+come with the type. `error` results are exempt.
 
 Rejected:
 
 ```go
-func NewStore() Storage { return &fileStore{} }
+func NewStore() Storage { return &FileStore{} }
 ```
 
 Accepted:
@@ -938,6 +938,222 @@ Accepted:
 ```go
 func NewStore() *FileStore { return &FileStore{} }
 ```
+
+Also accepted, because two concrete types make the interface honest:
+
+```go
+func NewStore(mem bool) Storage {
+    if mem {
+        return &MemStore{}
+    }
+
+    return &FileStore{}
+}
+```
+
+### What the rule reads
+
+The rule reads the body, and it reports a result only when the body
+proves the conclusion. It reads every return statement of the function
+and takes the static type of the expression at that result position.
+One return that gives no concrete type ends the proof, because the
+author cannot narrow a result the body does not build. Four shapes give
+no concrete type:
+
+- A return of an expression whose type is already the interface. The
+  value comes from somewhere else, such as a parameter or a call, and
+  the evidence sits there.
+- A naked return. It reads the result variable, whose type is the
+  interface, and an assignment somewhere in the body set it. The rule
+  reads no flow of values, so it stops there.
+- A conversion, such as `return Storage(&fileStore{})`. The static type
+  of a conversion is the type it names. The author states the widening,
+  and the rule reads the statement.
+- A body with no return statement at all, and a declaration with no
+  body, such as an assembly stub.
+
+Two shapes carry the proof. A return of a value builds the type of that
+value. The expression can be a composite literal, a variable, or a call
+with one result. A return of a call with several results carries the
+type of each result in its tuple, so `return openFile(name)` proves the
+first result.
+
+A return of `nil` beside one concrete type keeps the conclusion. The
+caller of such a function sees that one type or nothing, so the
+concrete result describes the API. The constructor shape `return nil,
+err` is therefore a report and not an exemption. The concrete result
+also removes the trap of a nil pointer inside a non-nil interface,
+which a caller of the interface form cannot see.
+
+One shape in that group needs a reader who knows the package. A method
+can return the interface to give the caller a nil interface value, and
+`(*net.TCPAddr).opAddr` is such a method. The concrete result would
+give a typed nil there, which is the trap above with the sign
+reversed. Some of the findings with `or nil` in the message hold that
+shape, and the author decides.
+
+**Two of those shapes are silent escapes.** A conversion, and a named
+result that an assignment fills before a naked return, both silence the
+rule and leave no marker for review. Every other escape in this rule
+set carries one: `CONTRACT:` states the API that sets the signature,
+and `disable` sits in the configuration file. A project that enables
+G09 buys that gap. The rule keeps both shapes, because it reads static
+types, and because the author of a conversion states the widening on
+purpose. Neither shape is the recommended escape. `CONTRACT:` is the
+reviewable one, and it stays the answer for a signature the project
+must keep.
+
+### Which results the rule judges
+
+The rule judges each result position on its own. A signature with an
+interface at position one and a concrete type at position two gets one
+report. The report sits at the type of the result it names.
+
+Go groups names, so `(first, second Storage)` is one type and two
+results. Every report of that group sits at the one type, so two
+results that build the same type give one message. Two results that
+build two types give two messages, because the reader needs both.
+
+Three result types are out of scope:
+
+- The predeclared `error`. Go returns errors through that interface,
+  and a concrete error result breaks the caller that compares the
+  value with `nil`. The test is narrow, as in G10: an interface that
+  embeds `error` is another type, and the rule judges it.
+
+  **A recorded risk.** A domain interface that embeds `error`, or that
+  holds `Error() string` under another name, gets a report. The advice
+  there re-creates the trap that the `error` exemption avoids. A
+  function with a concrete error result gives a non-nil value for a nil
+  pointer. The caller that tests the result then reads the wrong
+  answer. A wider test, such as an exemption for every method set that
+  holds `Error() string`, would remove that risk. The rule keeps the
+  narrow test, because G10 states the same narrow test for the same
+  reason. One project cannot get two answers about `error` from one
+  rule set. A project that meets the shape uses `CONTRACT:` or
+  `disable`.
+- The empty interface. G04 reports `any` and `interface{}`, and it
+  gives the same advice. A defined interface with no method, such as
+  `type Empty interface{}`, is a domain type, and this rule judges it.
+- A result type that mentions a type parameter. Go reads and builds
+  such a value through the interface. Every other result of a generic
+  function follows the rule, because a concrete instantiated type, such
+  as `sorter[T]`, is a legal result.
+
+The rule reads a function declaration and a method. Exported and
+unexported declarations follow the same rule, and a test file gets no
+exemption. A function literal takes its signature from the call or the
+variable that holds it, so the rule leaves a literal alone. The returns
+of a literal belong to the literal, and never to the function around
+it.
+
+### The exemptions
+
+A method that an interface declares with the same result is exempt at
+that result. The receiver must satisfy the whole interface. An
+interface of an imported package therefore fixes the signature, and the
+author cannot change it.
+
+An interface of the package under analysis fixes the result too, for
+another reason: the advice would stop the package from compiling. A
+method that narrows its result no longer satisfies the interface, and
+the compiler rejects the file. The rule cannot state advice that does
+not build, so such a method is no finding. The scan reads an unexported
+local interface too, because the compiler answers the same way for it.
+
+This is the test that G03 and G04 share, and `internal/signature` holds
+it. G09 takes a second entry point of the same machinery, and the two
+stances differ on purpose. G03 and G06 report a parameter. The author
+who owns the local interface can widen the parameter of that interface
+too, so the local interface is no contract there. G09 reports a result,
+and the same author has no such repair: the concrete type and the
+interface disagree in one direction only. `internal/signature` gives
+the two rules two constructors, and no rule reads the stance of the
+other.
+
+A method whose receiver implements no interface keeps its report. A
+scan of the standard library measured the difference between the two
+stances: the local interfaces hold back 101 findings of 378, and they
+add none.
+
+Every other external contract needs a justification: a `CONTRACT:`
+comment directly above the declaration. Such a comment covers every
+result of the signature. 003 states the comment contract. The analyzer
+cannot judge the text; review must.
+
+The rule skips generated files. A program writes the file, so a
+diagnostic there has no reader who can act on it.
+
+### Why the rule is opt-in
+
+The rule states a discipline, and the discipline costs something at two
+points. A package that returns an unexported concrete type must export
+that type to comply. A package that plans a second implementation holds
+an interface that only one type satisfies today.
+
+`context` shows both costs in one package. `Background`, `WithCancel`,
+and `WithValue` each build one unexported type, and the interface is
+the whole API of the package. A report there names no defect. A project
+that wants the discipline elsewhere enables the rule and reads such a
+package as the exception.
+
+The opt-in severity belongs to the golangci-lint plugin, which is the
+path that reads a configuration file. `cmd/antislop` and `go vet
+-vettool` read none, so they run this rule by default, and
+`-nointerfacereturn=false` turns it off there. 003 records the split.
+
+`disable` and `enable` are the switches of the plugin, and
+`//nolint:antislop` works on that path too. 003 states both.
+
+### The difference from `ireturn`
+
+`ireturn` reports an interface result by its type, and an allowlist
+holds the types a project accepts. It asks no question about the body.
+G09 reports a result only where the body proves that one concrete type
+reaches every path. A function such as `func NewStore(mem bool) Storage`
+with two implementations stays clean under G09, and it reports under
+`ireturn`. G09 is the narrower rule, and it needs no allowlist. Enable
+the one that fits the project; 001 records the overlap.
+
+### Measurement
+
+A scan of the whole standard library, tests included, reports 277
+findings in 138 files and 75 packages. The scan ran the standalone
+binary over `./...` in `GOROOT/src` with Go 1.26.2 on darwin/arm64, and
+with `-nointerfacereturn` to select this rule alone. 38 findings sit in
+test files. 64 of the 277 report a concrete type beside `nil`.
+
+The largest groups are `crypto/hpke` with 21, `net/http` with 18, `net`
+with 14, `image` with 12, and `text/template/parse` with 10. 162
+findings name an unexported concrete type, and 115 name an exported
+one.
+
+The local-interface exemption holds 101 findings back, and it adds
+none. A run without it gives 378. Four groups hold most of the
+difference. `text/template/parse` gives 23 `Node` methods, and
+`log/slog` gives 14 `slog.Handler` methods. `image` gives 14 methods
+that build a `color.Color` or a `color.Model`. `net` gives 14 methods
+above `Addr`, `Conn`, and its own `sockaddr`. Every one of them would
+stop the package from compiling.
+
+The exported half holds the findings a project can act on with no other
+change. `io.LimitReader` returns `Reader` and always builds
+`*io.LimitedReader`, which the package exports and documents.
+`debug/elf`, `debug/macho`, `debug/pe`, and `archive/zip` return
+`io.ReaderAt` or `io.ReadSeeker` and always build `*io.SectionReader`.
+Each caller of those functions loses the methods of the concrete type
+at the signature.
+
+The unexported half holds the cost of the rule. `context` gives 7, and
+`crypto/hpke` builds one `*aead` behind `AEAD`. The repair for such a
+package is to export the type, which is a design decision and no lint
+fix. The severity of the rule follows from that number: 162 findings of
+277 ask for an API change.
+
+`golang.org/x/tools` v0.38.0 reports 114 findings in 37 files and 20
+packages, 4 of them in test files. `go/ssa/interp` holds 58, where an
+interpreter passes values through an interface. `internal/mcp` and
+`internal/jsonrpc2_v2` hold 19 between them.
 
 ## G10 `noerrorassert`: no type assertions on errors (error)
 
