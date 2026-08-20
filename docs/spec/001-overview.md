@@ -1,4 +1,4 @@
-# 001 — Overview
+# 001: Overview
 
 ## Problem
 
@@ -64,7 +64,7 @@ The rule catalogue differs because the type systems differ:
 | `no-known-value-widening` | Interface-typed declarations of known values. See rule G09. |
 | `no-shape-in-symbol-names` | Not translated. The pattern is TypeScript-specific. |
 | `no-conditional-empty-object-spread` | Not translated. Go has no spread operator. |
-| `no-unknown-type-aliases` | Not translated. Folded into G02–G04. |
+| `no-unknown-type-aliases` | Not translated. Folded into G02-G04. |
 
 Go also needs rules with no upstream parent. Errors are values in Go,
 and panics are a Go-specific escape hatch. See rules G10 and G11.
@@ -74,12 +74,12 @@ and panics are a Go-specific escape hatch. See rules G10 and G11.
 Enable these existing linters next to this project. Do not re-implement
 them here:
 
-- `errcheck` — ignored error returns.
-- `forcetypeassert` — type assertions without the comma-ok form. Rule
+- `errcheck`: ignored error returns.
+- `forcetypeassert`: type assertions without the comma-ok form. Rule
   G01 supersedes it with the `SAFETY:` requirement; use one, not both.
-- `ireturn` — "accept interfaces, return concrete types". Rule G09
+- `ireturn`: "accept interfaces, return concrete types". Rule G09
   overlaps; the configuration section explains the split.
-- `staticcheck`, `govet`, `revive` — general correctness and idiom.
+- `staticcheck`, `govet`, `revive`: general correctness and idiom.
 
 Surface-pattern "slop" tools (sloplint, grain, ai-slop-detector) solve
 a different problem and compose freely with this project.

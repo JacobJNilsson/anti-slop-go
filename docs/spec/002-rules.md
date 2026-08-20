@@ -1,15 +1,15 @@
-# 002 — Rule catalogue
+# 002: Rule catalogue
 
-Each rule has an identifier (G01–G11), an analyzer name, a default
+Each rule has an identifier (G01-G11), an analyzer name, a default
 severity, and a statement of what it rejects and why. Examples show a
 rejected form and an accepted form.
 
 Severity levels:
 
-- **error** — on by default.
-- **opt-in** — off by default; the project must enable it.
+- **error**: on by default.
+- **opt-in**: off by default; the project must enable it.
 
-## G01 `safetyassert` — require a SAFETY comment for panicking type assertions (error)
+## G01 `safetyassert`: require a SAFETY comment for panicking type assertions (error)
 
 A single-result type assertion `v.(T)` panics when the assertion fails.
 The author must state the invariant that makes the panic unreachable.
@@ -41,7 +41,7 @@ The comment must sit directly above the assertion or above its
 containing statement, and must match `SAFETY:`.
 This rule supersedes `forcetypeassert`.
 
-## G02 `nountypedmap` — no untyped maps in signatures and fields (error)
+## G02 `nountypedmap`: no untyped maps in signatures and fields (error)
 
 `map[string]any`, `map[string]interface{}`, and maps with `any` values
 describe nothing. Data with known keys belongs in a struct. Decode at
@@ -73,7 +73,7 @@ type RenderInput struct {
 func Render(data RenderInput) ([]byte, error)
 ```
 
-## G03 `noanyparam` — no `any` parameters (error)
+## G03 `noanyparam`: no `any` parameters (error)
 
 An `any` parameter moves parsing from the boundary into the callee.
 Accept a named domain type. Generic type parameters with constraints
@@ -99,7 +99,7 @@ Accepted:
 func Store[V Storable](key string, value V) error
 ```
 
-## G04 `noanyreturn` — no `any` returns (error)
+## G04 `noanyreturn`: no `any` returns (error)
 
 An `any` return forces every caller to assert. Return the concrete
 type, or a small interface the caller consumes, or a generic result.
@@ -116,7 +116,7 @@ Accepted:
 func Lookup(key string) (Record, error)
 ```
 
-## G05 `nolaundering` — no widen-then-assert (error)
+## G05 `nolaundering`: no widen-then-assert (error)
 
 A value must not pass through `any` (or a broader interface) and come
 back through an assertion in the same function or call chain the
@@ -138,7 +138,7 @@ u := any(user).(User)
 
 Accepted: keep `user` typed as `User`.
 
-## G06 `noadhoctypeswitch` — no ad hoc type switches on `any` (error)
+## G06 `noadhoctypeswitch`: no ad hoc type switches on `any` (error)
 
 A type switch over an `any` value re-parses data away from its
 boundary. Branch on a domain value instead: a kind field, a sealed
@@ -172,14 +172,14 @@ type Message interface{ isMessage() }
 func handle(msg Message) { ... }
 ```
 
-## G07 `noreflect` — no reflection outside allowlisted packages (error)
+## G07 `noreflect`: no reflection outside allowlisted packages (error)
 
 `reflect` erases every static guarantee. Serialization libraries need
 it; application code does not. The configuration allowlists packages
 (by path pattern) that may import `reflect`. `reflect.DeepEqual` in
 test files is exempt by default.
 
-## G08 `nomonkeypatch` — no monkey patching in tests (error)
+## G08 `nomonkeypatch`: no monkey patching in tests (error)
 
 A test must not rewire production code through mutable globals.
 The seam belongs in the design: accept an interface or a function
@@ -211,7 +211,7 @@ type Clock interface{ Now() time.Time }
 func NewServer(c Clock) *Server
 ```
 
-## G09 `nointerfacereturn` — return concrete types for known values (opt-in)
+## G09 `nointerfacereturn`: return concrete types for known values (opt-in)
 
 A function that always builds one concrete type must return that type,
 not an interface. The caller keeps the evidence and the methods.
@@ -229,7 +229,7 @@ Accepted:
 func NewStore() *FileStore { return &FileStore{} }
 ```
 
-## G10 `noerrorassert` — no type assertions on errors (error)
+## G10 `noerrorassert`: no type assertions on errors (error)
 
 Wrapped errors defeat direct assertions and direct type switches.
 Use `errors.As` and `errors.Is`, which walk the wrap chain.
@@ -251,7 +251,7 @@ if errors.As(err, &pe) { ... }
 complete when a project runs this project alone. The configuration can
 turn it off when `staticcheck` runs with the equivalent checks.
 
-## G11 `justifypanic` — require a PANICS comment for panic in library code (opt-in)
+## G11 `justifypanic`: require a PANICS comment for panic in library code (opt-in)
 
 `panic` outside `main`, `init`, and test helpers is an API decision.
 The author must state why the process cannot continue, in a `// PANICS:`

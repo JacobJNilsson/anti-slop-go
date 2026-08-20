@@ -1,0 +1,12 @@
+#!/bin/sh
+# The pre-commit tier of the two-tier gate: a fast local approximation
+# that vets, lints, and -race-tests only the packages the staged change
+# can affect, with the SAME coverage bar on the scoped profile. Gate or
+# toolchain changes escalate to the full `make check` inside the script.
+# Pre-push and CI always run the full gate; it stays the definition of
+# green.
+# Run through make so the Makefile's COVERAGE_MIN export reaches the
+# scoped gate; a direct script call would fall back to the script default
+# and the two tiers could enforce different bars.
+set -e
+make check-scoped

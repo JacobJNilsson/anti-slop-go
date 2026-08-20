@@ -1,0 +1,5 @@
+# Reviewed coverage exclusions. One path glob per line, anchored at the
+# module root; '*' and '?' never cross '/'. Every entry MUST carry an
+# inline '# reason: ...' annotation, and every addition gets reviewed.
+# Do not add entries to dodge the gate; see AGENTS.md.
+cmd/antislop/main.go # reason: thin multichecker wiring; the analyzers it registers carry the tests

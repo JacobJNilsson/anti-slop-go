@@ -1,4 +1,4 @@
-# 003 — Implementation and configuration
+# 003: Implementation and configuration
 
 ## Architecture
 
@@ -64,11 +64,11 @@ linters-settings:
 
 Semantics:
 
-- `boundary-packages` — package path patterns where decode-time
+- `boundary-packages`: package path patterns where decode-time
   dynamic checks are legal. G02 allows local untyped maps here; G06
   allows type switches here.
-- `reflect-allow` — package path patterns that may import `reflect`.
-- `enable` / `disable` — rule toggles. Defaults follow the severity
+- `reflect-allow`: package path patterns that may import `reflect`.
+- `enable` / `disable`: rule toggles. Defaults follow the severity
   column in 002.
 
 There are no inline suppression comments. The `SAFETY:` and `PANICS:`
@@ -89,13 +89,13 @@ Shared by G01 and G11 (`PANICS:`), and identical to upstream:
 
 ## Milestones
 
-1. **M1** — module skeleton, `safetyassert` (G01), `nountypedmap`
+1. **M1**: module skeleton, `safetyassert` (G01), `nountypedmap`
    (G02), CI with `analysistest`, first tagged release.
-2. **M2** — `noanyparam` (G03), `noanyreturn` (G04), `nolaundering`
+2. **M2**: `noanyparam` (G03), `noanyreturn` (G04), `nolaundering`
    (G05), golangci-lint plugin entry point.
-3. **M3** — `noadhoctypeswitch` (G06), `noreflect` (G07),
+3. **M3**: `noadhoctypeswitch` (G06), `noreflect` (G07),
    `nomonkeypatch` (G08), `noerrorassert` (G10).
-4. **M4** — opt-in rules `nointerfacereturn` (G09) and `justifypanic`
+4. **M4**: opt-in rules `nointerfacereturn` (G09) and `justifypanic`
    (G11); configuration polish; dogfood on a real project and tune
    false positives before 1.0.
 

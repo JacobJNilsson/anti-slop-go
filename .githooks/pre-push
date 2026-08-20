@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+# Defense in depth: git exports its location variables into a hook's
+# environment. A test git subprocess that inherited these would operate
+# on THIS repository instead of its own temp repo. Unset them so nothing
+# `make check` runs can inherit an ambient git location.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
+	GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
+	GIT_INDEX_VERSION GIT_PREFIX
+make check
