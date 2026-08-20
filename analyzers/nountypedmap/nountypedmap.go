@@ -45,6 +45,7 @@ var Analyzer = &analysis.Analyzer{
 
 const advice = "describe the data with a named struct"
 
+// CONTRACT: analysis.Analyzer.Run fixes this signature.
 func run(pass *analysis.Pass) (any, error) {
 	// SAFETY: inspect.Analyzer is in Requires, so the driver always
 	// supplies its result, and that result is an *inspector.Inspector.

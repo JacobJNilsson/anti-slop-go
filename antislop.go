@@ -5,6 +5,8 @@ package antislop
 import (
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyreturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nountypedmap"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/safetyassert"
 )
@@ -16,5 +18,7 @@ func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
 		safetyassert.Analyzer, // G01
 		nountypedmap.Analyzer, // G02
+		noanyparam.Analyzer,   // G03
+		noanyreturn.Analyzer,  // G04
 	}
 }

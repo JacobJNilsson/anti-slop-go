@@ -8,9 +8,10 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Implementation phase. Two analyzers are available, and both run by
-default: `safetyassert` (rule G01) and `nountypedmap` (rule G02). Read
-the specification in [`docs/spec`](docs/spec):
+Implementation phase. Four analyzers are available, and all four run by
+default: `safetyassert` (rule G01), `nountypedmap` (G02), `noanyparam`
+(G03), and `noanyreturn` (G04). Read the specification in
+[`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
 2. [Rules](docs/spec/002-rules.md): the rule catalogue with examples.

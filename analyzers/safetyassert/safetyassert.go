@@ -41,6 +41,7 @@ const message = "type assertion has no SAFETY justification; " +
 // safetyRE is the marker contract from docs/spec/003-implementation.md.
 var safetyRE = regexp.MustCompile(`\bSAFETY\s*:`)
 
+// CONTRACT: analysis.Analyzer.Run fixes this signature.
 func run(pass *analysis.Pass) (any, error) {
 	// SAFETY: inspect.Analyzer is in Requires, so the driver puts its
 	// result type in ResultOf before it calls this function.

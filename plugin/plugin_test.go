@@ -34,6 +34,9 @@ func analyzerNames(as []*analysis.Analyzer) []string {
 
 // build runs the whole path a golangci-lint run takes: decode the
 // settings, then ask for the analyzers.
+//
+// CONTRACT: the helper passes conf to New, whose signature
+// register.NewPlugin fixes.
 func build(t *testing.T, conf any) ([]*analysis.Analyzer, error) {
 	t.Helper()
 

@@ -63,9 +63,11 @@ type plugin struct {
 }
 
 // New builds the plugin from the raw settings that golangci-lint read
-// from the configuration file. It satisfies register.NewPlugin, so the
-// parameter type is any. It returns an error for a malformed settings
-// block, and golangci-lint stops the run.
+// from the configuration file. It returns an error for a malformed
+// settings block, and golangci-lint stops the run.
+//
+// CONTRACT: register.NewPlugin fixes this signature, so the parameter
+// type is any.
 func New(conf any) (register.LinterPlugin, error) {
 	settings, err := register.DecodeSettings[Settings](conf)
 	if err != nil {
