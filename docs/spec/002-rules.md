@@ -181,10 +181,41 @@ a diagnostic there has no reader who can act on it.
 
 ## G05 `nolaundering`: no widen-then-assert (error)
 
-A value must not pass through `any` (or a broader interface) and come
-back through an assertion in the same function or call chain the
-analyzer can see. The widening destroys evidence the program already
-had; the assertion re-creates it as a guess.
+A value must not pass through `any`, or through a broader interface,
+and come back through an assertion. The widening throws away evidence
+that the program had. The assertion makes a guess of that evidence
+again. The rule reports two shapes.
+
+**The chained shape.** The widening sits in the operand of the
+assertion.
+
+Rejected:
+
+```go
+u := any(user).(User)
+f := reader.(any).(*os.File)
+```
+
+The rule reports the assertion when the operand widens a type that the
+code knows. Such an operand is an explicit conversion to an interface,
+or an assertion to an interface that the value satisfies already.
+`any(v).(T)` is a report when `v` is a `T`, because the two steps
+cancel. It is a report when `v` is another type too, because the
+conversion manufactures the assertability: `v.(T)` alone does not
+compile.
+
+Accepted:
+
+```go
+rw := reader.(io.ReadWriter)
+```
+
+An assertion that only narrows an interface has no widening step. G05
+accepts it, and G01 owns the justification.
+
+**The binding shape.** The widening puts the value in a local
+variable, and an assertion takes the type back later in the same
+function.
 
 Rejected:
 
@@ -193,13 +224,91 @@ var v any = user
 u := v.(User)
 ```
 
-Rejected (chained):
-
-```go
-u := any(user).(User)
-```
-
 Accepted: keep `user` typed as `User`.
+
+The rule tracks a local variable only when every assignment in the
+function widens the same concrete type. A variable that also takes a
+value which the function cannot know holds a real question, and the
+rule accepts the assertion on it. Such a value has one of these
+sources:
+
+- a parameter,
+- a call that returns `any`,
+- a map read,
+- a channel receive,
+- a range clause,
+- one call that fills two names.
+
+A narrower interface, a type parameter, and a second concrete type
+also stop the report. None of them names the type that the variable
+holds, so the assertion still separates possibilities. This
+conservatism is the guard against false positives.
+
+The zero value of a declaration is not an assignment. A `var v any`
+with one widening assignment in one branch stays a report. An
+assertion on nil fails, so the other branch justifies nothing. The
+advice of the message does not fit that shape. Where a widening
+carries a value out of one branch, hold the value in a typed variable
+beside a bool, or in a typed pointer.
+
+The rule reports the comma-ok form as well. The widening answered the
+question that it asks, so the `ok` result carries no information.
+
+**What the rule leaves alone.** The rule reports an assertion that
+takes a concrete type back. It reports a type switch too, whose cases
+take concrete types back. An assertion to another interface asks
+whether
+the value satisfies that interface. Go states no negative answer to
+that question at compile time, and the standard library tests use the
+runtime form, so the rule leaves it. A version probe is the same
+shape: code asserts a value against a small interface to learn whether
+the build supplies a method. The compiler answers for the version in
+front of it, and that answer does not settle the question that the
+code asks.
+
+A type parameter also stops a report. The rule leaves a widening
+alone when a type parameter appears in the type that the widening
+hides. It leaves the widening alone when a type parameter appears in
+the type that the assertion names too. Go reads a value of a
+parameterized type through an interface only, which `any(v).(T)`
+shows. Go builds one the same way, which `any(concrete).([]T)` shows.
+The test reads a type parameter in these places:
+
+- the type arguments of a named type,
+- the key and the value of a map,
+- the fields of a struct type,
+- the parameters and the results of a function type,
+- the element of a pointer, a slice, an array, and a channel.
+
+A generic function that launders a value of another type still gets a
+report. 003 keeps the wider open question about type parameters.
+
+These exemptions come from a scan of the whole standard library, tests
+included. The scan reported 34 findings before them and 3 after, and
+every one of the 3 is a widening that an assertion takes back.
+`golang.org/x/tools`, `golang.org/x/exp`, and `golang.org/x/text`
+report none. `golang.org/x/net` reports 2, in a vendored copy of the
+`encoding/xml` test that std also reports.
+
+A `SAFETY:` comment does not stop a report. G01 accepts the comment,
+and G05 still reports, because the fix is to delete the widening and
+not to justify the assertion. G05 reads no marker comment.
+
+The message names the type that the widening hides and the line of the
+widening. A variable with two widenings takes the first one. The line
+is the adjusted line, so a `//line` directive moves the message and
+the position of the diagnostic together.
+
+The analyzer reads one function at a time, and it reads no order of
+statements. It follows no value through a parameter, a result, a
+struct field, a slice, a map, a channel, or a package-level variable. A
+function literal that reads the variable drops the binding, because the
+analyzer cannot see when the program runs the literal. A variable whose
+address escapes drops too. 003 records what an SSA pass would add.
+
+The rule skips generated files, which `go/ast` recognises by the
+`Code generated ... DO NOT EDIT.` header. A program writes the file, so
+a diagnostic there has no reader who can act on it.
 
 ## G06 `noadhoctypeswitch`: no ad hoc type switches on `any` (error)
 
