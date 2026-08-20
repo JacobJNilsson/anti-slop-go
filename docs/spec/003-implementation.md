@@ -50,7 +50,7 @@ linters-settings:
   custom:
     antislop:
       settings:
-        boundary-packages:        # G02, G06: decode boundaries
+        boundary-packages:        # G06: decode boundaries
           - "*/internal/ingest"
           - "*/api"
         reflect-allow:            # G07
@@ -65,8 +65,8 @@ linters-settings:
 Semantics:
 
 - `boundary-packages`: package path patterns where decode-time
-  dynamic checks are legal. G02 allows local untyped maps here; G06
-  allows type switches here.
+  dynamic checks are legal. G06 allows type switches here. G02 needs
+  no entry, because it never flags a local variable.
 - `reflect-allow`: package path patterns that may import `reflect`.
 - `enable` / `disable`: rule toggles. Defaults follow the severity
   column in 002.
