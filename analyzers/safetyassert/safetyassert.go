@@ -7,12 +7,12 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"os"
-	"regexp"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
 const doc = `require a SAFETY comment for panicking type assertions
@@ -38,8 +38,10 @@ const message = "type assertion has no SAFETY justification; " +
 	"state the checked invariant in a SAFETY: comment directly above it, " +
 	"or use the comma-ok form"
 
-// safetyRE is the marker contract from docs/spec/003-implementation.md.
-var safetyRE = regexp.MustCompile(`\bSAFETY\s*:`)
+// safetyMarker is the marker word of rule G01. Package signature holds
+// the contract that the three markers of
+// docs/spec/003-implementation.md share.
+const safetyMarker = "SAFETY"
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
 func run(pass *analysis.Pass) (any, error) {
@@ -47,8 +49,7 @@ func run(pass *analysis.Pass) (any, error) {
 	// result type in ResultOf before it calls this function.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	index := newCommentIndex(pass.Fset, pass.Files, sourceReader(pass))
-	generated := generatedFiles(pass.Fset, pass.Files)
+	justifications := signature.NewJustifications(pass, safetyMarker)
 
 	insp.WithStack([]ast.Node{(*ast.TypeAssertExpr)(nil)}, func(n ast.Node, push bool, stack []ast.Node) bool {
 		if !push {
@@ -64,11 +65,10 @@ func run(pass *analysis.Pass) (any, error) {
 		if _, isTuple := pass.TypesInfo.Types[assert].Type.(*types.Tuple); isTuple {
 			return true
 		}
-		file := pass.Fset.File(assert.Pos())
-		if generated[file] {
+		if justifications.Generated(assert.Pos()) {
 			return true
 		}
-		if index.hasSafetyAbove(file, candidateLines(pass.Fset, assert, stack)) {
+		if justifications.MarkedAbove(assert.Pos(), candidateLines(pass.Fset, assert, stack)) {
 			return true
 		}
 		// Report at the .( token, not at the start of the operand: in a
@@ -84,9 +84,9 @@ func run(pass *analysis.Pass) (any, error) {
 // above: the line of the assertion, the line of its .( token for a
 // multi-line operand, and the lines of the statements that contain it.
 func candidateLines(fset *token.FileSet, assert *ast.TypeAssertExpr, stack []ast.Node) []int {
-	lines := []int{lineOf(fset, assert.Pos()), lineOf(fset, assert.Lparen)}
+	lines := []int{signature.LineOf(fset, assert.Pos()), signature.LineOf(fset, assert.Lparen)}
 	for _, stmt := range enclosingStmts(stack) {
-		lines = append(lines, lineOf(fset, stmt.Pos()))
+		lines = append(lines, signature.LineOf(fset, stmt.Pos()))
 	}
 	return lines
 }
@@ -141,97 +141,4 @@ func clauseBody(stmt ast.Stmt) ([]ast.Stmt, bool) {
 		return clause.Body, true
 	}
 	return nil, false
-}
-
-// commentIndex answers the question "does a whole-line comment end on
-// this line of this file?" for every comment of the package.
-type commentIndex struct {
-	fset    *token.FileSet
-	byFile  map[*token.File]map[int][]*ast.CommentGroup
-	ownLine map[*ast.CommentGroup]bool
-}
-
-// sourceReader returns the file reader of the pass. Not every driver
-// sets one, so the operating system is the fallback.
-func sourceReader(pass *analysis.Pass) func(string) ([]byte, error) {
-	if pass.ReadFile != nil {
-		return pass.ReadFile
-	}
-	return os.ReadFile
-}
-
-func newCommentIndex(fset *token.FileSet, files []*ast.File, readFile func(string) ([]byte, error)) *commentIndex {
-	index := &commentIndex{
-		fset:    fset,
-		byFile:  make(map[*token.File]map[int][]*ast.CommentGroup, len(files)),
-		ownLine: make(map[*ast.CommentGroup]bool),
-	}
-	for _, file := range files {
-		tokenFile := fset.File(file.FileStart)
-		src, err := readFile(tokenFile.Name())
-		if err != nil {
-			// Fail open: the own-line test needs the source bytes.
-			src = nil
-		}
-		byLine := make(map[int][]*ast.CommentGroup, len(file.Comments))
-		for _, group := range file.Comments {
-			end := lineOf(fset, group.End())
-			byLine[end] = append(byLine[end], group)
-			index.ownLine[group] = startsOwnLine(tokenFile, src, group)
-		}
-		index.byFile[tokenFile] = byLine
-	}
-	return index
-}
-
-// hasSafetyAbove reports whether a whole-line SAFETY comment ends on the
-// line directly above one of lines.
-func (ci *commentIndex) hasSafetyAbove(file *token.File, lines []int) bool {
-	byLine := ci.byFile[file]
-	for _, line := range lines {
-		for _, group := range byLine[line-1] {
-			if ci.ownLine[group] && safetyRE.MatchString(group.Text()) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// startsOwnLine reports whether only whitespace comes before the comment
-// group on its first line. A comment that trails code justifies the code
-// beside it, never the line below.
-func startsOwnLine(file *token.File, src []byte, group *ast.CommentGroup) bool {
-	start := file.Offset(group.Pos())
-	if start > len(src) {
-		return true // Fail open: the source is unreadable or stale.
-	}
-	lineStart := start
-	for lineStart > 0 && src[lineStart-1] != '\n' {
-		lineStart--
-	}
-	for _, b := range src[lineStart:start] {
-		if b != ' ' && b != '\t' {
-			return false
-		}
-	}
-	return true
-}
-
-// generatedFiles returns the set of files that carry the "Code generated
-// ... DO NOT EDIT." header. Their author cannot add a comment.
-func generatedFiles(fset *token.FileSet, files []*ast.File) map[*token.File]bool {
-	generated := make(map[*token.File]bool)
-	for _, file := range files {
-		if ast.IsGenerated(file) {
-			generated[fset.File(file.FileStart)] = true
-		}
-	}
-	return generated
-}
-
-// lineOf returns the physical line of a position. It ignores //line
-// directives, because comments sit at physical lines.
-func lineOf(fset *token.FileSet, pos token.Pos) int {
-	return fset.PositionFor(pos, false).Line
 }
