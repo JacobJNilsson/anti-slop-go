@@ -5,6 +5,7 @@ package antislop
 import (
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyreturn"
@@ -17,9 +18,9 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/safetyassert"
 )
 
-// Analyzers returns every analyzer this module provides, an opt-in rule
-// included. Consumers register the full list; rule toggles happen in
-// the consumer's configuration, not here.
+// Analyzers returns every analyzer this module provides, the opt-in
+// rules included. Consumers register the full list; rule toggles happen
+// in the consumer's configuration, not here.
 //
 // One registry serves the three consumption paths of 003. The
 // golangci-lint plugin reads a configuration file, so it applies the
@@ -39,5 +40,6 @@ func Analyzers() []*analysis.Analyzer {
 		nomonkeypatch.Analyzer,     // G08
 		nointerfacereturn.Analyzer, // G09, opt-in
 		noerrorassert.Analyzer,     // G10
+		justifypanic.Analyzer,      // G11 (opt-in)
 	}
 }

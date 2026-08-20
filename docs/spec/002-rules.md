@@ -1276,10 +1276,11 @@ complete when a project runs this project alone. A project that runs
 
 ## G11 `justifypanic`: require a PANICS comment for panic in library code (opt-in)
 
-`panic` outside `main`, `init`, and test helpers is an API decision.
-The author must state why the process cannot continue, in a `// PANICS:`
-comment directly above the call. `log.Fatal` and `os.Exit` in library
-code get the same treatment.
+A `panic` outside `main`, outside `init`, and outside a test file is an
+API decision. The author of a library stops the process of somebody
+else. The author must state why the process cannot continue, in a
+`// PANICS:` comment directly above the call. `log.Fatal` and `os.Exit`
+in library code get the same treatment.
 
 Rejected:
 
@@ -1306,6 +1307,199 @@ func MustParse(s string) Config {
     return c
 }
 ```
+
+The severity is opt-in. The measurement below states the volume, and
+the `enable` setting of the plugin turns the rule on, which 003
+describes. The standalone binary and `go vet -vettool` read no
+configuration file, so both apply every rule of the module. A reader of
+those two paths turns this rule off with `-justifypanic=false`.
+
+### What the rule reads
+
+The rule reads the object that the type checker resolved, and never a
+name. It reports three groups of calls:
+
+- the builtin `panic`;
+- `os.Exit`;
+- `Fatal`, `Fatalf`, `Fatalln`, `Panic`, `Panicf`, and `Panicln` of
+  package `log`.
+
+Every `Fatal` of package `log` calls `os.Exit`, and every `Panic` of it
+calls the builtin. The rule therefore reads the package function and
+the method of `log.Logger` under one name. `log.Fatalf` and
+`log.Default().Fatalf` are one decision, and a rule that reads the
+package function alone would leave the other one open. An embedded
+`*log.Logger` promotes the method, and the object stays the one of
+package `log`, so a call through the embedding reports as well.
+
+The `Panic` group belongs to the first sentence of the rule. Such a
+call raises a panic, and the name of the package is no reason to read
+it another way.
+
+A logger of the project is another type. An interface that declares
+`Fatalf`, and a value of a type that the project declares, both give
+another object. The rule reads no call of them, because a name is no
+evidence that the process stops.
+
+The message names the function of package `log` in both forms, so a
+call of `l.Fatalf` reports as `log.Fatalf`. The message names the
+function that stops the process, and the position of the diagnostic
+names the call itself.
+
+`runtime.Goexit` gets no report. It ends one goroutine and leaves the
+process running, so it is control flow and no termination.
+
+The rule reads the call and follows no variable. A `var exit = os.Exit`
+with a later `exit(1)` therefore stays clean. A local value that carries
+the name of a package resolves to another object as well. A variable
+named `os` with an `Exit` field therefore stops nothing.
+
+The diagnostic sits at the call and not at the statement. A deferred
+call starts later than the statement that holds it, and the call is the
+line the author justifies.
+
+### The justification
+
+The comment follows the justification contract of 003. It owns its
+line, and the marker `PANICS:` starts a line of its text, so
+`NOT-PANICS:` is no justification. The comment ends on the line
+directly above one of these lines:
+
+- the line of the call;
+- the line of the innermost statement that holds the call;
+- the line of the outermost statement below the enclosing block.
+
+One implementation gives that set to G01 and to G11, which
+`internal/signature` holds, so the two rules cannot drift apart. G01
+adds one candidate of its own, the line of the `.(` token. A call needs
+no such line, because a call starts where it starts. The rule of a case
+clause holds here word for word. The line of a clause sits above the
+first statement of the clause only. A later statement of the same clause
+needs its own comment.
+
+The candidate lines stop at a block. A comment above an `if` therefore
+justifies no panic inside the body of that `if`. Such a comment would
+cover every statement of a body of any length, and the reader of the
+panic would stand far from it. The accepted example above shows the
+placement the rule asks for, which is the line directly above the call.
+
+### What the rule leaves alone
+
+- **The function `main` of a main package.** It is the program itself,
+  and nobody stands behind it.
+- **An init function of any package.** It runs before the program
+  works, and it reports a broken build to the one who starts it.
+- **Every file whose name ends in `_test.go`.** A panic there stops one
+  test binary, and the author of the test reads the stack trace at
+  once. The exemption covers the whole file, so a helper of a test
+  needs no comment.
+- **A generated file**, which `go/ast` recognises by the
+  `Code generated ... DO NOT EDIT.` header. Nobody edits such a file to
+  add a justification.
+- **A rethrow of a recovered value**, which the next section states.
+
+### Decisions the rule states
+
+**The exemption reads the function and not the package.** A function
+beside `main` in a main package is library code. The reader of that
+function still stands behind the call, and the package name says
+nothing about it. A function literal inside `main` is `main`, because
+the declaration that holds the call decides. A call outside every
+declaration sits in a package-level literal, which is library code.
+
+**A method named `init` is no init function.** The runtime calls no
+method, so such a method reports like any other one.
+
+**A name is no evidence.** A `MustXxx` function gets no exemption from
+its name. The name states that the function panics, and the rule asks
+why. The comment is the whole evidence, and a review can reject it.
+
+**A rethrow preserves and decides nothing.** The exemption covers
+`panic(v)` where `v` is a `recover()` call, or a variable that a
+`recover()` call of the same function filled. That shape re-raises the
+panic of another function. A new value in a new variable keeps its
+report, and `panic("wrapped")` beside a recover is such a value.
+
+The rule reads one function, and it reads no order of statements inside
+it. Three limits follow:
+
+- A `recover()` in a nested function literal fills no variable of the
+  function around it. A panic outside that literal reports.
+- A `recover()` that fills a field or an entry names no variable the
+  rule can follow. A panic on that field reports.
+- A variable that a `recover()` filled keeps the exemption for the
+  whole function. A `panic(r)` above the line that fills `r` is
+  therefore exempt. A `r = fmt.Errorf(...)` before the panic does not
+  take the exemption back either.
+
+The first two limits report a shape that is a rethrow, and their author
+writes the comment. The third one accepts a panic that raises another
+value. All three shapes are rare. A value graph would answer better,
+and 003 records that work for G05, which asks the same question.
+
+**No setting silences the rule.** The comment is the configuration. A
+project that cannot write one for a call disables the rule, which is
+the escape that 003 records for every rule.
+
+### Measurement
+
+A scan of the whole standard library, tests included, reports 1538
+findings in 361 files and 163 packages. The scan ran the standalone
+binary with `-justifypanic` over `./...` in `GOROOT/src` with Go 1.26.2
+on darwin/arm64.
+
+1499 of the findings are the builtin `panic`, 35 are `os.Exit`, and 4
+are calls of package `log`. The four are `log.Fatalf` in
+`net/http/transport.go`, `log.Fatal` in
+`internal/runtime/gc/internal/gen`, `log.Panic` in `net/rpc/client.go`,
+and `log.Panicln` in `expvar`. No production file of the standard
+library calls a `Fatal` method of a `log.Logger` value. The method
+ruling therefore adds nothing to this number, and it closes the hole
+anyway. `reflect` gives 234 findings, `runtime` 110, `math/big` 75,
+`testing` 66, and `crypto/cipher` 45. 21 of the 35 `os.Exit` findings
+sit in `testing`, which stops the test binary, and 6 sit in package
+`log` itself.
+
+The three exemptions hold findings back in that scan, and a run without
+each one gives the number:
+
+- The test-file exemption holds back 1162 findings. A run without it
+  gives 2700, so test code writes 43 percent of the panics of the
+  standard library.
+- The rethrow exemption holds back 18 findings. Every one of them
+  re-raises a value that a deferred `recover` caught. Most sit in a
+  package that turns a panic into an error, such as `encoding/gob`,
+  `text/template`, `fmt`, `go/types`, and `regexp/syntax`.
+  `sync.WaitGroup` re-raises for another reason: it keeps its own
+  `Done` call out of the way of the panic.
+- The main and init exemption holds back 11 findings, and every one of
+  them sits in an init function. They are the self-check of
+  `crypto/internal/fips140`, the type registration of `encoding/gob`,
+  and two of `runtime/mgcstack`.
+
+`golang.org/x/tools` v0.41.0 reports 598 findings in 168 files with the
+same binary. 104 of them, 17 percent, sit in files of a package main.
+`cmd/toolstash` gives 30, `cmd/go-contrib-init` 15, and `cmd/stringer`
+7. A repository with a `cmd` tree therefore pays a cost that the
+standard library does not show. The rule exempts `main` and `init` and
+no other function, because a library function beside `main` still takes
+an API decision. A `cmd` package that grows a library inside it is the
+case this rule reports.
+
+The volume is the reason for the opt-in severity. Most Go code takes the
+decision to panic without a word. A project that turns this rule on
+therefore accepts a large first run. The number is information for that
+decision and no measure of the rule. The standard library is a library
+of libraries, and `reflect`, `runtime`, and `math/big` panic on a
+programmer error by design.
+
+A first run under golangci-lint arrives truncated. The findings of this
+rule share one text, and `max-same-issues` keeps 3 of them by default.
+`max-issues-per-linter` keeps 50 findings of the whole `antislop`
+linter. Set both settings to 0 to read the list, which v2.10.1
+documents in `golangci-lint run --help`. Such a project writes
+the comment where the panic is the contract, as `bytes.Buffer.Truncate`
+documents its own panic today.
 
 ## The external contract exemption, shared by G03 and G04
 

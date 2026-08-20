@@ -22,6 +22,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
@@ -36,14 +37,14 @@ func init() { register.Plugin(name, New) }
 
 // optInRules names the rules that a project turns on deliberately.
 // Specification 002 gives some rules an opt-in severity, and such a
-// rule stays off until the enable setting names it. G11 (justifypanic)
-// joins this set when it arrives.
+// rule stays off until the enable setting names it.
 //
 // This set is where the opt-in severity takes effect. The registry of
 // the module holds every rule, because cmd/antislop and go vet read no
 // configuration file. 003 records that split.
 var optInRules = map[string]bool{
 	nointerfacereturn.Analyzer.Name: true, // G09
+	justifypanic.Analyzer.Name:      true, // G11
 }
 
 // Settings is the configuration surface of the plugin. golangci-lint
