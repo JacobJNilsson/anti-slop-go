@@ -156,11 +156,24 @@ nothing else.
 
 ## Open questions
 
-- G05 scope: single-function analysis is cheap; cross-function
-  laundering needs the SSA pass. Start single-function; measure the
-  escape rate on real code.
+- G05 scope: settled for now. The analyzer that shipped is
+  single-function, flow-insensitive, and binding-aware. It reports a
+  widening in the operand of an assertion. It also reports a widening
+  into a local variable, when a later assertion in the same function
+  takes the type back. It builds no SSA. It drops a binding that a
+  function literal reads, and a binding whose address escapes. An SSA
+  pass would add three things. The order of the statements separates a
+  widening that reaches the assertion from one that does not. The
+  value graph follows a value through a struct field, a slice, a map,
+  or a channel. The call graph follows a value across functions. The
+  first measurement is in 002. The whole standard library, tests
+  included, gives 3 findings, and four x repositories give 2. Measure
+  again on a project that decodes a lot of input, before that work
+  starts.
 - G06 sealed-interface guidance: should the analyzer suggest the
   marker-method pattern in its diagnostic, or stay silent on the fix?
 - Generics: G03 accepts constrained type parameters. Decide whether an
   unconstrained `[T any]` parameter used only for pass-through counts
-  as evidence or as laundering.
+  as evidence or as laundering. G05 answered the question for itself
+  only: it reads no generic function, because Go demands the widening
+  there.

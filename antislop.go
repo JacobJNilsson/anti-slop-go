@@ -7,6 +7,7 @@ import (
 
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyreturn"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/nolaundering"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nountypedmap"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/safetyassert"
 )
@@ -20,5 +21,6 @@ func Analyzers() []*analysis.Analyzer {
 		nountypedmap.Analyzer, // G02
 		noanyparam.Analyzer,   // G03
 		noanyreturn.Analyzer,  // G04
+		nolaundering.Analyzer, // G05
 	}
 }

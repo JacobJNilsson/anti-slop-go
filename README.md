@@ -8,10 +8,10 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Implementation phase. Four analyzers are available, and all four run by
+Implementation phase. Five analyzers are available, and all five run by
 default: `safetyassert` (rule G01), `nountypedmap` (G02), `noanyparam`
-(G03), and `noanyreturn` (G04). Read the specification in
-[`docs/spec`](docs/spec):
+(G03), `noanyreturn` (G04), and `nolaundering` (G05). Read the
+specification in [`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
 2. [Rules](docs/spec/002-rules.md): the rule catalogue with examples.
@@ -82,11 +82,11 @@ Four points about this file:
   individual rules with the plugin's own `enable` and `disable`
   settings, not with `linters.enable`. An unknown rule name in either
   plugin setting stops the run.
-- `disable` drops a rule from the default set: `safetyassert` and
-  `nountypedmap` today. A configuration that disables every rule is
-  legal, and the linter then reports nothing. `enable` turns on an
-  opt-in rule. No rule is opt-in yet, so `enable` takes no name today,
-  and a name that is on by default stops the run.
+- `disable` drops a rule from the default set, which holds the five
+  rules that the Status section names. A configuration that disables
+  every rule is legal, and the linter then reports nothing. `enable`
+  turns on an opt-in rule. No rule is opt-in yet, so `enable` takes no
+  name today, and a name that is on by default stops the run.
 
 Run the new binary with `./custom-gcl run ./...`.
 
