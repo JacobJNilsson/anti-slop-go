@@ -4,7 +4,7 @@
 COVERAGE_MIN ?= 90
 export COVERAGE_MIN
 
-.PHONY: build test gate-test lint lint-fast vet tidy tidy-check check check-scoped setup clean
+.PHONY: build test gate-test lint lint-fast vet tidy tidy-check check check-scoped selfcheck setup clean
 
 build:
 	go build ./...
@@ -38,7 +38,12 @@ tidy:
 tidy-check:
 	go mod tidy -diff
 
-check: tidy-check vet lint gate-test test build
+# The repo lints itself with its own analyzers. The multichecker exits
+# nonzero on any finding, so slop in this codebase fails the gate.
+selfcheck:
+	go run ./cmd/antislop ./...
+
+check: tidy-check vet lint gate-test test build selfcheck
 
 # The pre-commit tier of the two-tier gate: vet/lint/-race-test only the
 # packages the staged change can affect, with the SAME coverage bar on

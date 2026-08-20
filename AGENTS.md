@@ -25,6 +25,7 @@ runs, in order:
 4. the coverage-gate self-test
 5. `go test -race ./...` plus the coverage gate
 6. `go build ./...`
+7. `make selfcheck`: the repo's own analyzers over the repo (dogfood)
 
 The gate is two-tier: pre-commit runs a fast local approximation (`make
 check-scoped`) - vet, lint, and `-race` tests scoped to the packages the staged
