@@ -13,3 +13,20 @@ func TestAnalyzersReturnsRegisteredRules(t *testing.T) {
 		t.Fatalf("Analyzers() returned %d analyzers; update this test with the rule set", len(got))
 	}
 }
+
+// Every caller gets its own slice. A consumer edits the result to put a
+// configured analyzer in the place of a shared one, which the
+// golangci-lint plugin does for each run. A shared backing array would
+// carry that edit into the next caller.
+func TestAnalyzersReturnsAFreshSlice(t *testing.T) {
+	first := Analyzers()
+	second := Analyzers()
+	if len(first) == 0 || len(second) == 0 {
+		t.Fatal("Analyzers() returned an empty rule set")
+	}
+
+	first[0] = nil
+	if second[0] == nil {
+		t.Error("Analyzers() shares its backing array between calls; one caller can edit the set of another")
+	}
+}

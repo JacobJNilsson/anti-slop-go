@@ -7,8 +7,10 @@ import (
 
 	"github.com/golangci/plugin-module-register/register"
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/analysistest"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
 // registryNames returns the name of every rule the module provides.
@@ -272,4 +274,68 @@ func TestGetLoadMode(t *testing.T) {
 	if got := p.GetLoadMode(); got != register.LoadModeTypesInfo {
 		t.Errorf("GetLoadMode() = %q; want %q", got, register.LoadModeTypesInfo)
 	}
+}
+
+// The reflect-allow setting is the configuration surface of rule G07 on
+// the golangci-lint path. golangci-lint never sets analyzer flags, so
+// the plugin builds the analyzer through its constructor.
+func TestNewDecodesReflectAllow(t *testing.T) {
+	patterns := []string{"example.com/app/internal/codec", ".../internal/wire"}
+
+	p, err := New(map[string]any{"reflect-allow": []any{patterns[0], patterns[1]}})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if !slices.Equal(got.settings.ReflectAllow, patterns) {
+		t.Errorf("reflect-allow = %v; want %v", got.settings.ReflectAllow, patterns)
+	}
+}
+
+// The patterns must reach the analyzer, so this test runs the analyzer
+// that BuildAnalyzers returned. The allowed fixture carries no want
+// comment and the other one does, so one run tests both directions.
+func TestBuildAnalyzersGivesNoreflectItsPatterns(t *testing.T) {
+	built, err := build(t, map[string]any{"reflect-allow": []any{"allowed"}})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+
+	configured := byName(t, built, noreflect.Analyzer.Name)
+	analysistest.Run(t, analysistest.TestData(), configured, "allowed", "notallowed")
+}
+
+// Two golangci-lint runs can hold different settings, and the analyzer
+// values of the module are shared. The plugin must therefore build its
+// own instance and never write to the shared one.
+func TestBuildAnalyzersLeavesTheSharedAnalyzerAlone(t *testing.T) {
+	built, err := build(t, map[string]any{"reflect-allow": []any{"allowed"}})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+
+	if configured := byName(t, built, noreflect.Analyzer.Name); configured == noreflect.Analyzer {
+		t.Error("BuildAnalyzers returned the shared analyzer; the next run would inherit these patterns")
+	}
+	if got := noreflect.Analyzer.Flags.Lookup("allow").Value.String(); got != "" {
+		t.Errorf("the shared analyzer holds the patterns %q of one run", got)
+	}
+}
+
+// byName returns the analyzer of one rule.
+func byName(t *testing.T, as []*analysis.Analyzer, name string) *analysis.Analyzer {
+	t.Helper()
+
+	for _, a := range as {
+		if a.Name == name {
+			return a
+		}
+	}
+	t.Fatalf("the built rule set holds no rule named %q", name)
+
+	return nil
 }
