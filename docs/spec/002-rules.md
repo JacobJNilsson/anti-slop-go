@@ -9,6 +9,9 @@ Severity levels:
 - **error**: on by default.
 - **opt-in**: off by default; the project must enable it.
 
+G03 and G04 share one exemption. The section "The external contract
+exemption", after G11, describes it, and both rules point at it.
+
 ## G01 `safetyassert`: require a SAFETY comment for panicking type assertions (error)
 
 A single-result type assertion `v.(T)` panics when the assertion fails.
@@ -89,13 +92,44 @@ An `any` parameter moves parsing from the boundary into the callee.
 Accept a named domain type. Generic type parameters with constraints
 are fine; they carry evidence.
 
-Exemptions, checked by signature shape:
+The rule flags a parameter of a function declaration, a method, a
+function literal, an interface method, and a declared function type.
+An alias, such as `type A = any`, is the same type, so the rule flags
+its use sites. A defined type, such as `type Payload any`, is a domain
+type, so the rule accepts it. The rule tests the written parameter type
+only. It accepts a type that merely holds the empty interface, such as
+`[]any`, `*any`, or `Box[any]`. A type parameter is not the empty
+interface, so `[T any]` and its uses stay clean. 003 keeps the open
+question about an unconstrained type parameter.
 
-- variadic `...any` followed by a format-string parameter before it
-  (`fmt`-style helpers),
-- parameters named `cause` in error-wrapping helpers (mirrors upstream),
-- implementations of external interfaces that require `any`
-  (`json.Marshaler` patterns, `sql/driver.Valuer` inputs).
+The rule accepts three shapes.
+
+**The `fmt`-style variadic tail.** The rule accepts the last parameter
+when every one of these holds:
+
+- the parameter is variadic, and its element is the empty interface;
+- an earlier parameter has the predeclared type `string`, which a
+  defined string type is not;
+- that parameter's name starts or ends with "format", in any case, or
+  the signature has a name of more than one letter that ends in `f`.
+
+The name is the name of the function, of the method, of the interface
+method, of the function field, or of the declared function type. A
+function literal carries no name, so it needs the parameter name. A
+name that only holds "format" inside itself, such as
+`informationText`, is another word. The exemption covers the variadic
+tail: an `any` parameter beside a format string keeps its report.
+
+**The name `cause`.** The rule accepts a parameter named `cause`,
+which mirrors the upstream error-wrapping helper. The analyzer cannot
+read intent, so the name is the whole contract. A group such as
+`(cause, value any)` keeps the report, because only one of its names
+carries the contract.
+
+**An external contract**, which the section "The external contract
+exemption" describes. `context.Context`, with `Value(key any) any`, is
+the case that needs the exemption of G03 and the exemption of G04 on
+one method.
 
 Rejected:
 
@@ -109,10 +143,23 @@ Accepted:
 func Store[V Storable](key string, value V) error
 ```
 
+The rule skips generated files, which `go/ast` recognises by the
+`Code generated ... DO NOT EDIT.` header. A program writes the file, so
+a diagnostic there has no reader who can act on it.
+
 ## G04 `noanyreturn`: no `any` returns (error)
 
 An `any` return forces every caller to assert. Return the concrete
 type, or a small interface the caller consumes, or a generic result.
+
+The rule flags a result of a function declaration, a method, a function
+literal, an interface method, and a declared function type. Aliases,
+defined types, type parameters, and types that merely hold the empty
+interface follow G03 exactly.
+
+The only exemption is an external contract, which the section "The
+external contract exemption" describes. G04 needs no `cause` exemption
+and no `fmt` exemption: neither shape returns a value.
 
 Rejected:
 
@@ -125,6 +172,10 @@ Accepted:
 ```go
 func Lookup(key string) (Record, error)
 ```
+
+The rule skips generated files, which `go/ast` recognises by the
+`Code generated ... DO NOT EDIT.` header. A program writes the file, so
+a diagnostic there has no reader who can act on it.
 
 ## G05 `nolaundering`: no widen-then-assert (error)
 
@@ -293,6 +344,82 @@ func MustParse(s string) Config {
     return c
 }
 ```
+
+## The external contract exemption, shared by G03 and G04
+
+An external API can set the shape of a signature. The author cannot
+change such a signature and keep the program working, so a report there
+names code the project cannot repair. G03 and G04 accept two kinds of
+evidence for it.
+
+### Evidence the analyzer reads: an interface method
+
+A method is exempt when all of this holds:
+
+- the receiver, or the pointer to the receiver, implements an exported
+  interface of a package that the analysed package imports;
+- that interface declares a method of the same name;
+- that method has the empty interface at the same position.
+
+```go
+func (c *store) Value(key any) any { ... } // implements context.Context
+```
+
+This evidence needs no comment, and it covers the common case. It has
+two limits. The analysed package must import the package that declares
+the interface. A structural implementer that names no such import gets
+nothing here. And `types.Implements` answers false when a type
+parameter of the receiver takes part in the match. A generic type that
+implements the interface for one instantiation only then loses the
+exemption. A generic receiver whose type parameters take no part keeps
+it. Both limits lose the exemption; neither invents one. The comment
+below is the remedy.
+
+### Evidence the author writes: a CONTRACT comment
+
+Every other signature-setting API needs a justification comment,
+because the analyzer cannot see what sets the shape:
+
+```go
+// CONTRACT: sync.Pool.New sets this signature.
+func newBuffer() any { return new(bytes.Buffer) }
+```
+
+The comment follows the justification contract of 003: it owns its
+line, and it matches `\bCONTRACT\s*:`. It ends on the line directly
+above the line where the signature starts. A function declaration, a
+method, an interface method, and a field start on that line. Where the
+signature sits inside an expression that spans lines, the comment sits
+above the statement or the variable declaration.
+
+One comment can silence more than one signature, so place it with
+care:
+
+- It covers every empty interface parameter and result on the line it
+  sits above. A comment above `func F(cb func(v any))` covers `F` and
+  the callback type.
+- It covers every signature inside the statement or the variable
+  declaration it sits above. A comment above a handler table covers
+  every entry of that table.
+- It covers nothing inside a `var ( ... )` block or a type
+  declaration. The comment there sits above the block, not above an
+  entry.
+
+The text must name the API that sets the signature. The analyzer
+cannot judge the text; review must.
+
+A comment, not a table of shapes, is the escape for a reason. A call
+that sets a signature can take any form: a struct field, a call
+argument, a conversion, or a method value. A test of one form accepts
+that form silently and elsewhere, and it hides the evidence from the
+reader of the declaration. The comment sits where the reader stands, it
+names the API, and a review can reject it.
+
+This repository writes the comment at every entry point it owns. The
+`Run` field of `analysis.Analyzer` has the type
+`func(*analysis.Pass) (any, error)`. `register.NewPlugin` sets
+`New(conf any)`. So the analyzers of this module and the golangci-lint
+plugin justify themselves.
 
 ## Rules considered and rejected
 
