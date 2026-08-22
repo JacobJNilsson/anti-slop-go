@@ -91,6 +91,15 @@ them here:
   `require.True(a == b)` as `require.Equal`, and G12 then counts the
   result. No checker of it counts assertions across statements, and
   none names go-cmp.
+- `iface`: its `opaque` analyzer states the rule of G09 almost word for
+  word. It reports "functions that return interfaces, but the actual
+  returned value is always a single concrete implementation". It is off
+  by default, and it is one of the five analyzers of that linter. The
+  other four report other kinds of interface pollution. G09 carries two
+  things that `opaque` does not. The first is the exemption for an
+  interface that the package under analysis declares, which a scan
+  measured at 101 findings of 378. The second is the `CONTRACT:` escape
+  for a signature that an external API fixes. Enable one, not both.
 - `staticcheck`, `govet`, `revive`: general correctness and idiom.
 - `depguard`: a deny list of import paths. It covers the plain half of
   rule G07, which is "no package imports `reflect`". G07 keeps its own
