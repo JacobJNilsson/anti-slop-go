@@ -1,6 +1,6 @@
 # 002: Rule catalogue
 
-Each rule has an identifier (G01-G11), an analyzer name, a default
+Each rule has an identifier (G01-G12), an analyzer name, a default
 severity, and a statement of what it rejects and why. Examples show a
 rejected form and an accepted form.
 
@@ -10,7 +10,7 @@ Severity levels:
 - **opt-in**: off by default; the project must enable it.
 
 G03 and G04 share one exemption. The section "The external contract
-exemption", after G11, describes it, and both rules point at it.
+exemption", after G12, describes it, and both rules point at it.
 
 ## G01 `safetyassert`: require a SAFETY comment for panicking type assertions (error)
 
@@ -1500,6 +1500,359 @@ linter. Set both settings to 0 to read the list, which v2.10.1
 documents in `golangci-lint run --help`. Such a project writes
 the comment where the panic is the contract, as `bytes.Buffer.Truncate`
 documents its own panic today.
+
+## G12 `fullstructcomp`: compare the whole value, not field after field (opt-in)
+
+A test can assert several fields of one value, one assertion for each
+field. Such a test states one claim for each field it names. It states
+no claim about the rest. The field that the code adds next joins the
+value, and the test stays silent about it. A failing `require` call
+also hides the fields behind it, because that call stops the test. One
+comparison of the whole value against a want value states the whole
+expectation. It reports every wrong field at once.
+
+The name of the rule comes from the Google Go Style Guide. Its section
+"Full structure comparisons" states the same advice.
+
+Rejected:
+
+```go
+func TestCreate(t *testing.T) {
+    got := Create("boot", 3)
+    require.Equal(t, "boot", got.Name)
+    require.Equal(t, 3, got.Count)
+    require.Equal(t, "new", got.State)
+}
+```
+
+Accepted:
+
+```go
+func TestCreate(t *testing.T) {
+    got := Create("boot", 3)
+    want := Item{Name: "boot", Count: 3, State: "new"}
+    if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(Item{}, "ID")); diff != "" {
+        t.Errorf("Create() = unexpected value (-want +got):\n%s", diff)
+    }
+}
+```
+
+The `IgnoreFields` entry carries the field that the test cannot
+predict. A measurement of five Go codebases gives how often the fix
+needs such an entry. In each one, a reported group of four fields or
+more sits on a type that holds 9 to 11 fields, and the test asserts 5
+of them. In 63 to 100 percent of the groups, the test asserts fewer
+fields than the type holds. So the fix almost always needs one such
+entry. Every message of this rule names the option.
+
+### What the rule reads
+
+**The files.** The rule reads test files, which are the files whose
+name ends in `_test.go`. It reads the test files of the package under
+test and the external test package the same way. It skips generated
+files, which `go/ast` recognises by the
+`Code generated ... DO NOT EDIT.` header.
+
+**The unit.** One function declaration. A function literal inside a
+declaration belongs to that declaration, because a subtest closure is
+the same test. A helper is a declaration of its own, and its base is a
+parameter. `func compare(t *testing.T, want, got *User)` is such a
+helper. Three of the clearest findings of the standard library live in
+one: `os/user.compare`, `go/token.checkPos`, and
+`go/scanner.checkPos`.
+
+**The assertion sites.** Two forms.
+
+- A call of the equality family of the testify module: `Equal`,
+  `Equalf`, `EqualValues`, `EqualValuesf`, `Exactly`, and `Exactlyf`.
+  The rule resolves the import path of the call. It reads the package
+  name of a qualified call, and it reads the type of a receiver. A
+  package with the same name and another path counts for nothing. The
+  receiver form, which `r := require.New(t)` builds, counts like the
+  package form.
+- An `if` statement whose condition holds `==` or `!=`, and whose body
+  calls an `Error` or `Fatal` method on a value of the `testing`
+  package. The name of the method is not evidence by itself. A type of
+  the project with an `Errorf` method therefore stops no report.
+
+The failure call must be a direct statement of the body of the `if`.
+A call inside a nested block, such as a second `if` or a loop, states
+a condition that the rule cannot read. A walk of the whole body adds 4
+findings to the standard library scan, and each one holds such a nested
+condition.
+
+**The base and the field.** The rule walks the chain of an operand
+through a selector, an index, a pointer, and parentheses. It stops at
+the name at the root. That name must be a variable, so a chain that
+starts with the name of a package names no base. A call stops the walk,
+because the result of a method is not a field of the receiver. The
+field is the whole path under the base. So `got.A.B` names the field
+`A.B`, which is another field than `A`. The rule groups by the declared
+variable, and never by its name. Two values of one name, in two subtest
+closures, therefore stay apart.
+
+The path is text, and it counts a promoted field twice. `got.Name` and
+`got.Embedded.Name` name one field of the value through two paths, and
+the rule reads two fields. A test that writes both paths is rare, and
+the count is high by one there.
+
+**The counting.** A site that names exactly one field of a base
+contributes that field. A site that names two or more fields of one
+base contributes nothing, because the author compared those fields in
+one statement already. The rule counts distinct fields, so one field
+asserted twice is one field. It reports a base when the count reaches
+the number that the setting sets.
+
+That measure matters. A count of field mentions, instead of
+single-field sites, reports 37 standard library functions at four
+fields. The count of single-field sites reports 20. The 17 others hold
+a combined condition that needs no change.
+
+A table-driven loop needs no rule of its own. The syntax tree holds one
+site inside the body of the loop, so a table of 40 cases counts once.
+
+### The setting
+
+`-fullstructcomp.min` sets the number of distinct fields that a
+report needs. The `fullstructcomp-min` setting of the plugin takes the
+same number. The default is **2**.
+
+The default has a history, and both steps stand here. The first
+measurement read the standard library and recommended **4**. At 4 the
+standard library reports 15 of its 11169 test functions. A reading of
+all 15 gave 5 clear improvements, 3 that improve with work, and 7 wrong
+reports.
+
+A second measurement then read the findings of a private Go service at
+exactly 3 fields and at exactly 2 fields, and it set the default at 2.
+That service holds 838 test functions and uses testify. Two forms fill
+both groups of findings. The first creates a value and asserts the
+fields it passed in. The second stores a value, reads it back, and
+asserts the fields of the result. One such roundtrip asserts 3 fields
+of a value that holds 29. Each form holds a want value that the test
+can write, so each one is the form this rule asks for.
+
+The mid-flow checkpoint is the counter-class of that reading. Such a
+test runs a scenario in steps, and it asserts the one field that each
+step changed. The section "Why the rule is opt-in" states it. A project
+that meets that form raises the number to 3 or to 4. The flag is the
+first escape such a project reaches for.
+
+The second reading supersedes the first. The recommendation of 4 came
+from the standard library, which writes no checklist. The default of 2
+comes from the kind of codebase that this rule is for.
+
+A number of 1, and every number below it, gives no useful rule. The
+rule then reports every base with one single-field assertion, and a Go
+test needs the spot check. A scan of the standard library at one field
+reports 1056 test functions, which is 9.5 percent of them. Almost every
+one of those assertions is correct as it stands.
+`require.Equal(t, http.StatusOK, resp.StatusCode)` states the whole
+claim of its test. A diff of the whole response would need a longer
+ignore list than the assertion it replaces.
+
+### What the rule leaves alone
+
+- **A base that a range clause of the function fills.** Such a base
+  holds a table case, and not a produced value. Its fields meet values
+  that the case carries, and no want value stands beside it. The
+  exclusion removes 10 of 30 standard library groups at four fields,
+  and 1 of 41 groups of the private service. A clause with `:=` and a
+  clause with `=` both fill the variable, so both stop the reports of
+  it.
+- **A site that names two fields of one base**, such as
+  `if a.X != w.X || a.Y != w.Y`. That statement is one compare.
+- **A call outside the equality family.** `True`, `Len`, `Nil`,
+  `Empty`, and `Contains` state another claim. `True(got.A == x)`
+  states an equality in another form. `testifylint` already asks the
+  author to write it as `Equal`, and this rule reads it after that
+  change. `InDelta` states an equality with a tolerance, and the
+  tolerance sits in the call, so the rule leaves it out of the count.
+  `cmpopts.EquateApprox` carries the same tolerance into the fix.
+- **A test harness that holds the produced value.** A test that writes
+  `s.got.Name` and `s.got.Count` names two fields of the base `s`. Each
+  site names one of them, so the two sites report. A test that writes
+  `require.Equal(t, s.want.Name, s.got.Name)` names two fields of `s`
+  in one site, so that site contributes nothing. Such a harness is
+  therefore exempt in silence. The base is the root of the chain, and a
+  narrower answer needs another unit of grouping.
+- **A method of a testify suite.** `s.Equal(...)` inside a suite method
+  names a type of the project, so the rule reads no assertion there.
+  The private service imports the suite package nowhere, so this hole
+  distorts no measurement above. A wider test needs the
+  base-granularity answer of the paragraph above first.
+- **A generated file**, and every file that is not a test file.
+
+### Decisions the rule states
+
+**A site that names one field of two bases counts for both.** A helper
+compares `want.Name` against `got.Name`, and `want.Count` against
+`got.Count`. Such a helper gets two reports: one for `want`, and one
+for `got`. One `cmp.Diff` answers both. One report for each function is
+the alternative. It would hide the second base of a function with two
+produced values. The measurement of the codebases counts groups for the
+same reason. A measurement of the duplicate positions gives 6 to 10
+percent of the reports.
+
+**An argument of the message counts like any other operand.** The call
+`require.Equalf(t, want.A, got.A, "the name is %s", got.Name)` names
+two fields of `got`, so it contributes nothing for that base. It still
+names one field of `want`, so it counts for `want`. The rule reads the
+operands of the call and judges no position in it. A run that reads the
+value arguments alone gives the private service the same 156 findings
+at two fields, and the same 40 at four. No file of the standard library
+calls testify, so no such form reaches that scan. The decision changes
+no count in either codebase today.
+
+**The rule reports a base whose type holds an unexported field.** There
+is no exemption for such a type. The message carries one more sentence
+for it. `cmp.Diff` panics at run time, and not at build time, on an
+unexported field anywhere in the type graph. The author needs
+`cmp.AllowUnexported` there, and would not guess it. Without that
+sentence the author writes a panic into a test that passes.
+
+The private service settles the question. Not one of its 75 measured
+groups needs the option, and not one of its 651 asserted fields is
+unexported. Its tests read exported domain types from other packages.
+The standard library gives the opposite result. 53 percent of its
+asserted fields are unexported, because its tests sit in the package
+under test. The rule reports both, and it names the option where the
+option is needed.
+
+The test of the type graph follows `cmp`. It walks a pointer, a slice,
+an array, a map, and the fields of a structure. It stops at a type that
+carries a usable `Equal` method. Three things make a method usable. The
+method set of the type must hold it. The value must fit the parameter.
+The result must be a boolean. `time.Time` carries such a method, and it
+needs no option. Three forms carry the name and give no comparison, and
+a run with go-cmp v0.7.0 panics on each one:
+
+- a value field whose `Equal` method has a pointer receiver, because
+  the method set of a value holds no such method;
+- a value field whose `Equal` method takes a pointer, because the value
+  does not fit the parameter;
+- a field whose `Equal` method takes another type, such as
+  `func (w W) Equal(n int) bool`.
+
+A pointer field with `func (t *T) Equal(*T) bool` meets all three
+requirements. The method set of the pointer holds the method, and
+the pointer fits the parameter, so cmp calls it and the walk stops.
+
+The walk reads the element of a map and never the key. cmp compares the
+keys of a map as keys and reads no field under them. A run with go-cmp
+v0.7.0 over a map with an unexported field in its key type returned a
+diff and no panic.
+
+**The note is a lower bound.** A missing note is not proof that the fix
+needs no option. An interface field, such as the `PublicKey any` of
+`crypto/x509.Certificate`, carries a value that the analyzer cannot
+name. That value can hold unexported fields, and `cmp.Diff` then panics
+where the message promised nothing. The note names what the types
+state, and the author reads the panic for the rest.
+
+**No comment stops a report.** `SAFETY:`, `PANICS:`, and `CONTRACT:`
+state an invariant, a reason, or an API that the analyzer cannot read.
+Here there is no invariant to state. There is only a judgement about
+which form of a test reads better, so no marker fits. Four things stop
+a report: the opt-in severity, the `disable` setting, the `min`
+setting, and `//nolint:antislop` on the golangci-lint path. 003 states
+all four.
+
+### Why the rule is opt-in
+
+Roughly half of the reports of the standard library at any number are
+wrong. The rule fires on idiomatic Go.
+
+The known false report is the mid-flow checkpoint. Its fields belong to
+one value, and its assertions sit apart in the function. The rule
+counts a group where the author wrote a sequence. At 3 or at 4 the form
+mostly falls away, and the setting is the first thing such a project
+changes.
+
+The standard library holds three more forms that no number reaches.
+`crypto/tls.checkConnectionState` asserts a non-zero cipher suite, a
+length, and two fields that only TLS 1.3 fills. Its type also holds
+unexported fields, so no want value exists. `runtime.TestMemStats`
+asserts ranges and not equality. `crypto/x509` reads a `Certificate` of
+52 fields with a `PublicKey any` and raw bytes. The analyzer cannot
+separate two questions. One is "assert five fields of one produced
+value". The other is "assert five separate properties of a value that
+no expectation describes". That limit is a property of syntax, and not
+a fault of the number.
+
+The report volume is low at every number. At the default of 2, the rule
+reports 134 findings in the standard library, in 110 test functions.
+That is 1.0 percent of its 11169 test functions. The private service
+reports 156 findings in 108 of its 838 test functions, which is 12.9
+percent. At 4 the two numbers are 0.13 percent and 4.2 percent. A
+testify codebase writes checklists at every number, and the standard
+library does not.
+
+The fix also takes a dependency. `github.com/google/go-cmp` is a direct
+requirement of the private service and of `golang.org/x/tools`. The
+standard library takes no external dependency at all. A project decides
+that for itself, which is what an opt-in rule asks it to do.
+
+The opt-in severity belongs to the golangci-lint plugin, which is the
+path that reads a configuration file. `cmd/antislop` and `go vet
+-vettool` read none, so they run this rule by default.
+`-fullstructcomp=false` turns it off there. 003 records the split.
+
+### Related work
+
+No Go linter covers this.
+
+`testifylint` v1.6.4 holds 25 checkers, and every one of them judges
+one call alone. None counts assertions across statements, and none
+names go-cmp. It composes with this rule and overlaps it nowhere.
+`bool-compare` turns `True(a == b)` into `Equal`, and this rule then
+counts the result. `gocritic` holds the nearest cousin,
+`typeAssertChain`, which folds repeated type assertions into one type
+switch. That is the same form of advice for another target.
+`staticcheck`, `revive`, `exhaustruct`, `funlen`, `gocognit`, and
+`dupl` all answer other questions. A group of ten assertions trips
+none of them. Outside Go, `jest/max-expects` caps the number of
+assertions of a test at 5. It never asks whether they read one value.
+
+The advice is canonical, and this rule mechanises it:
+
+- The Google Go Style Guide, "Full structure comparisons"
+  (`google.github.io/styleguide/go/decisions.html#full-structure-comparisons`):
+  "avoid writing test code that performs a hand-coded field-by-field
+  comparison of the struct. Instead, construct the data that you're
+  expecting your function to return, and compare directly using a deep
+  comparison."
+- The Go wiki, `go.dev/wiki/TestComments`, "Compare Full Structures".
+  It states the same guidance, and it prefers `cmp` to
+  `reflect.DeepEqual`.
+
+The rule respects one boundary that the guide states itself. The guide
+compares separate return values one by one. This rule counts the fields
+of one base only, so two results of one call stay apart.
+
+### Measurement
+
+A scan of the whole standard library, tests included, reports 134
+findings at two fields and 20 at four. The scan ran the standalone
+binary with `-fullstructcomp` over `./...` in `GOROOT/src` with Go
+1.26.2 on darwin/arm64.
+
+A scan of the private service reports 156 findings at two fields and 40
+at four. The two scans hold the separation that the severity rests on.
+
+The `cmp.AllowUnexported` sentence follows the codebase in the same
+way. 76 of the 134 standard library findings carry it. None of the 156
+findings of the private service carries it. The decision to exempt no
+type rests on that split.
+
+A hand-written script measured the same two codebases before the
+analyzer existed, and the two counts agree. The private service matches
+exactly: 156 groups at two fields, in 108 functions, and 40 groups at
+four, in 35 functions. The standard library gives 134 findings against
+the 133 groups of that script. The one added finding sits in
+`encoding/gob/codec_test.go`, where `(***i.A)[0] != 11` names one field
+of `i` through parentheses. The analyzer reads parentheses, and the
+script did not.
 
 ## The external contract exemption, shared by G03 and G04
 

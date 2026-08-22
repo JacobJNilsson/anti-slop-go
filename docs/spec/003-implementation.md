@@ -69,10 +69,11 @@ callers never share one.
 **A flag**, for `cmd/antislop` and for `go vet -vettool`. Both paths
 read no configuration file. `New` registers the flag of the rule on the
 instance it builds, and the flag writes into the configuration of that
-instance. `-noreflect.allow` and `-noadhoctypeswitch.boundary` are the
-flags today, and the multichecker registers each one because it
-registers the analyzer. Both take a comma-separated list, and a
-repeated flag adds patterns.
+instance. `-noreflect.allow`, `-noadhoctypeswitch.boundary`, and
+`-fullstructcomp.min` are the flags today, and the multichecker
+registers each one because it registers the analyzer. The first two
+take a comma-separated list, and a repeated flag adds patterns. The
+third takes one number.
 
 The settings block is the configuration surface of the plugin.
 golangci-lint gives the block to `New` of the plugin through
@@ -129,16 +130,19 @@ linters:
             - "example.com/app/api/..."
           reflect-allow:            # G07
             - "example.com/app/internal/codec"
+          fullstructcomp-min: 3     # G12: fields before a report
           disable:
             - noerrorassert         # when staticcheck covers it
           enable:
             - nointerfacereturn     # opt-in rules
             - justifypanic
+            - fullstructcomp
 ```
 
-Every key of the example exists today: `boundary-packages`, `enable`,
-`disable`, and `reflect-allow`. `nointerfacereturn` (G09) and
-`justifypanic` (G11) are the opt-in rules that `enable` names.
+Every key of the example exists today: `boundary-packages`,
+`fullstructcomp-min`, `enable`, `disable`, and `reflect-allow`.
+`nointerfacereturn` (G09), `justifypanic` (G11), and `fullstructcomp`
+(G12) are the opt-in rules that `enable` names.
 
 Semantics:
 
@@ -150,6 +154,12 @@ Semantics:
 - `reflect-allow`: package path patterns that may import `reflect`.
   G07 reads it, and `-noreflect.allow` takes the same patterns on the
   standalone path.
+- `fullstructcomp-min`: the number of distinct fields of one value that
+  a report of G12 needs. `-fullstructcomp.min` takes the same number on
+  the standalone path. A configuration with no such key gets the
+  default of the rule, which is 2. The key therefore takes a pointer in
+  the settings structure. The decoder writes zero for an absent key of
+  an integer field, and zero is a setting of its own.
 - `enable` / `disable`: rule toggles. Defaults follow the severity
   column in 002. `disable` drops a rule from the default set. `enable`
   turns on an opt-in rule, so it rejects a rule that is on by default.
@@ -165,6 +175,9 @@ that one list. The opt-in severity of 002 takes effect in the plugin,
 because the plugin is the path that reads a configuration file.
 `optInRules` in `plugin/plugin.go` names such a rule, and
 `BuildAnalyzers` drops it until `enable` names it.
+
+`nointerfacereturn` (G09), `justifypanic` (G11), and `fullstructcomp`
+(G12) are the opt-in rules today.
 
 The other two paths read no configuration file, so they run every rule.
 Their switch is the flag that `multichecker` and `go vet` give to each
@@ -273,6 +286,8 @@ listed here:
 4. **M4**: opt-in rules `nointerfacereturn` (G09) and `justifypanic`
    (G11); configuration polish; dogfood on a real project and tune
    false positives before 1.0.
+5. **M5**: opt-in rule `fullstructcomp` (G12), with the
+   `fullstructcomp-min` setting.
 
 ## Open questions
 

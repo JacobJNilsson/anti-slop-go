@@ -22,6 +22,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
@@ -45,6 +46,7 @@ func init() { register.Plugin(name, New) }
 var optInRules = map[string]bool{
 	nointerfacereturn.Analyzer.Name: true, // G09
 	justifypanic.Analyzer.Name:      true, // G11
+	fullstructcomp.Analyzer.Name:    true, // G12
 }
 
 // Settings is the configuration surface of the plugin. golangci-lint
@@ -64,6 +66,13 @@ type Settings struct {
 	// reflect. Rule G07 reads it. 003 states the pattern syntax. An
 	// empty list allows no package, which is the default of the rule.
 	ReflectAllow []string `json:"reflect-allow"`
+
+	// FullStructCompMin states the number of distinct fields of one
+	// value that a report of rule G12 needs. The key takes an integer.
+	// An absent key gives fullstructcomp.DefaultMin, which is why the
+	// field is a pointer: the decoder writes zero for an absent key of
+	// an integer field, and zero is a setting of its own.
+	FullStructCompMin *int `json:"fullstructcomp-min"`
 
 	// Enable names the opt-in rules to run. A rule that is on by
 	// default is not a choice, so a name outside optInRules is an
@@ -127,10 +136,22 @@ func (p *plugin) configured() []*analysis.Analyzer {
 			all[i] = noadhoctypeswitch.New(p.settings.BoundaryPackages)
 		case noreflect.Analyzer.Name:
 			all[i] = noreflect.New(p.settings.ReflectAllow)
+		case fullstructcomp.Analyzer.Name:
+			all[i] = fullstructcomp.New(p.minFields())
 		}
 	}
 
 	return all
+}
+
+// minFields returns the setting of rule G12. A configuration that names
+// no number gets the default of the rule.
+func (p *plugin) minFields() int {
+	if p.settings.FullStructCompMin == nil {
+		return fullstructcomp.DefaultMin
+	}
+
+	return *p.settings.FullStructCompMin
 }
 
 // GetLoadMode tells golangci-lint to give the analyzers full type

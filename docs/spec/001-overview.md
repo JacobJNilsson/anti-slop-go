@@ -67,7 +67,8 @@ The rule catalogue differs because the type systems differ:
 | `no-unknown-type-aliases` | Not translated. Folded into G02-G04. |
 
 Go also needs rules with no upstream parent. Errors are values in Go,
-and panics are a Go-specific escape hatch. See rules G10 and G11.
+panics are a Go-specific escape hatch, and the Go style guides ask a
+test to compare a whole structure. See rules G10, G11, and G12.
 
 ## Related work
 
@@ -84,6 +85,12 @@ them here:
   every path. A function with two implementations behind one interface
   stays clean under G09 and reports under `ireturn`. Enable the one
   that fits the project. G09 is opt-in and needs no allowlist.
+- `testifylint`: 25 checkers over the assertions of the testify
+  module. Every one of them judges one call alone, so it composes with
+  rule G12 and overlaps it nowhere. `bool-compare` rewrites
+  `require.True(a == b)` as `require.Equal`, and G12 then counts the
+  result. No checker of it counts assertions across statements, and
+  none names go-cmp.
 - `staticcheck`, `govet`, `revive`: general correctness and idiom.
 - `depguard`: a deny list of import paths. It covers the plain half of
   rule G07, which is "no package imports `reflect`". G07 keeps its own
