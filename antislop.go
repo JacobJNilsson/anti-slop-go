@@ -5,6 +5,7 @@ package antislop
 import (
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
@@ -42,6 +43,7 @@ func Analyzers() []*analysis.Analyzer {
 		nointerfacereturn.Analyzer, // G09, opt-in
 		noerrorassert.Analyzer,     // G10
 		justifypanic.Analyzer,      // G11 (opt-in)
-		fullstructcomp.Analyzer,    // G12 (opt-in)
+		fullstructcomp.Analyzer,    // G12, opt-in
+		errsemantics.Analyzer,      // G13, opt-in
 	}
 }

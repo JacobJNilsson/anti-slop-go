@@ -69,11 +69,12 @@ callers never share one.
 **A flag**, for `cmd/antislop` and for `go vet -vettool`. Both paths
 read no configuration file. `New` registers the flag of the rule on the
 instance it builds, and the flag writes into the configuration of that
-instance. `-noreflect.allow`, `-noadhoctypeswitch.boundary`, and
-`-fullstructcomp.min` are the flags today, and the multichecker
-registers each one because it registers the analyzer. The first two
-take a comma-separated list, and a repeated flag adds patterns. The
-third takes one number.
+instance. `-noreflect.allow`, `-noadhoctypeswitch.boundary`,
+`-fullstructcomp.min`, and `-errsemantics.equality` are the flags
+today, and the multichecker registers each one because it registers the
+analyzer. The first two take a comma-separated list, and a repeated
+flag adds patterns. The third takes one number, and the fourth takes a
+boolean.
 
 The settings block is the configuration surface of the plugin.
 golangci-lint gives the block to `New` of the plugin through
@@ -131,18 +132,21 @@ linters:
           reflect-allow:            # G07
             - "example.com/app/internal/codec"
           fullstructcomp-min: 3     # G12: fields before a report
+          errsemantics-equality: true   # G13
           disable:
             - noerrorassert         # when staticcheck covers it
           enable:
             - nointerfacereturn     # opt-in rules
             - justifypanic
             - fullstructcomp
+            - errsemantics
 ```
 
 Every key of the example exists today: `boundary-packages`,
-`fullstructcomp-min`, `enable`, `disable`, and `reflect-allow`.
-`nointerfacereturn` (G09), `justifypanic` (G11), and `fullstructcomp`
-(G12) are the opt-in rules that `enable` names.
+`reflect-allow`, `fullstructcomp-min`, `errsemantics-equality`,
+`enable`, and `disable`. `nointerfacereturn` (G09), `justifypanic`
+(G11), `fullstructcomp` (G12), and `errsemantics` (G13) are the opt-in
+rules that `enable` names.
 
 Semantics:
 
@@ -160,6 +164,13 @@ Semantics:
   default of the rule, which is 2. The key therefore takes a pointer in
   the settings structure. The decoder writes zero for an absent key of
   an integer field, and zero is a setting of its own.
+- `errsemantics-equality`: a boolean. G13 reads it, and it adds the
+  equality forms of that rule, which are a comparison of an error
+  message against a string. The default is false, because a package
+  that tests its own message text writes those forms and the Go wiki
+  page TestComments accepts them. `-errsemantics.equality` is the same
+  setting on the standalone path. The setting changes nothing until
+  `enable` names G13, because the rule is opt-in.
 - `enable` / `disable`: rule toggles. Defaults follow the severity
   column in 002. `disable` drops a rule from the default set. `enable`
   turns on an opt-in rule, so it rejects a rule that is on by default.
@@ -176,8 +187,8 @@ because the plugin is the path that reads a configuration file.
 `optInRules` in `plugin/plugin.go` names such a rule, and
 `BuildAnalyzers` drops it until `enable` names it.
 
-`nointerfacereturn` (G09), `justifypanic` (G11), and `fullstructcomp`
-(G12) are the opt-in rules today.
+`nointerfacereturn` (G09), `justifypanic` (G11), `fullstructcomp`
+(G12), and `errsemantics` (G13) are the opt-in rules today.
 
 The other two paths read no configuration file, so they run every rule.
 Their switch is the flag that `multichecker` and `go vet` give to each
@@ -286,8 +297,9 @@ listed here:
 4. **M4**: opt-in rules `nointerfacereturn` (G09) and `justifypanic`
    (G11); configuration polish; dogfood on a real project and tune
    false positives before 1.0.
-5. **M5**: opt-in rule `fullstructcomp` (G12), with the
-   `fullstructcomp-min` setting.
+5. **M5**: opt-in rules `fullstructcomp` (G12), with the
+   `fullstructcomp-min` setting, and `errsemantics` (G13), with the
+   `errsemantics-equality` setting.
 
 ## Open questions
 

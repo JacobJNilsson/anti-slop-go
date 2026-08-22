@@ -11,6 +11,7 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
@@ -35,7 +36,7 @@ func defaultNames(t *testing.T) []string {
 
 	names := registryNames(t)
 	if len(optInRules) == 0 {
-		t.Fatal("optInRules is empty; 002 gives rules G09 and G11 an opt-in severity")
+		t.Fatal("optInRules is empty; 002 gives rules G09, G11, and G13 an opt-in severity")
 	}
 	out := make([]string, 0, len(names))
 	for _, n := range names {
@@ -169,13 +170,14 @@ func TestNewRejectsWrongType(t *testing.T) {
 
 // The decoder rejects an unknown field, so a key of a rule that does
 // not exist yet fails the run. This test records that contract.
+//
+// The promise of the plugin is the failure itself. The message of that
+// error belongs to encoding/json, through the register package of
+// golangci-lint, and no sentinel and no type name it. The test
+// therefore asserts that the call failed, which rule G13 asks for.
 func TestNewRejectsUnknownKey(t *testing.T) {
-	_, err := New(map[string]any{"panic-allow": []any{"example.com/x"}})
-	if err == nil {
+	if _, err := New(map[string]any{"panic-allow": []any{"example.com/x"}}); err == nil {
 		t.Fatal("New accepted an unknown settings key; want an error")
-	}
-	if !strings.Contains(err.Error(), "panic-allow") {
-		t.Errorf("the error does not name the bad key: %v", err)
 	}
 }
 
@@ -208,7 +210,7 @@ func TestBuildAnalyzersDropsDisabledRules(t *testing.T) {
 }
 
 // The opt-in severity of 002 reaches the golangci-lint path here: the
-// registry holds rules G09 and G11, and a run without the enable
+// registry holds rules G09, G11, and G13, and a run without the enable
 // setting must not apply them. This test runs the real opt-in set, and
 // not the synthetic one of TestSelectAnalyzersOptIn. It checks every
 // opt-in rule, one at a time and all together, so a rule that joins
@@ -444,24 +446,61 @@ func TestBuildAnalyzersGivesNoadhoctypeswitchItsPatterns(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), configured, "boundary", "notboundary")
 }
 
+// The errsemantics-equality setting is the configuration surface of
+// rule G13 on the golangci-lint path. It takes a boolean and no
+// pattern, and the decoder reads it like the other keys.
+func TestNewDecodesErrsemanticsEquality(t *testing.T) {
+	p, err := New(map[string]any{"errsemantics-equality": true})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if !got.settings.Equality {
+		t.Error("errsemantics-equality = false; want true")
+	}
+}
+
+// The setting must reach the analyzer, so this test runs the analyzer
+// that BuildAnalyzers returned. Rule G13 is opt-in, so enable names it.
+func TestBuildAnalyzersGivesErrsemanticsItsSetting(t *testing.T) {
+	built, err := build(t, map[string]any{
+		"errsemantics-equality": true,
+		"enable":                []any{errsemantics.Analyzer.Name},
+	})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+
+	configured := byName(t, built, errsemantics.Analyzer.Name)
+	analysistest.Run(t, analysistest.TestData(), configured, "errtext")
+}
+
 // Two golangci-lint runs can hold different settings, and the analyzer
 // values of the module are shared. The plugin must therefore build its
 // own instance of every configurable rule, and never write to the
 // shared one.
 func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 	built, err := build(t, map[string]any{
-		"reflect-allow":      []any{"allowed"},
-		"boundary-packages":  []any{"boundary"},
-		"fullstructcomp-min": 3,
-		"enable":             []any{fullstructcomp.Analyzer.Name},
+		"reflect-allow":         []any{"allowed"},
+		"boundary-packages":     []any{"boundary"},
+		"fullstructcomp-min":    3,
+		"errsemantics-equality": true,
+		"enable": []any{
+			fullstructcomp.Analyzer.Name,
+			errsemantics.Analyzer.Name,
+		},
 	})
 	if err != nil {
 		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
 	}
 
 	// Each rule states the value its shared analyzer reads with no
-	// setting. A pattern list is empty there, and a number is the
-	// default of its rule.
+	// setting. A pattern list is empty there, a number is the default of
+	// its rule, and a boolean is false.
 	configurable := []struct {
 		shared *analysis.Analyzer
 		flag   string
@@ -470,6 +509,7 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 		{noreflect.Analyzer, "allow", ""},
 		{noadhoctypeswitch.Analyzer, "boundary", ""},
 		{fullstructcomp.Analyzer, "min", strconv.Itoa(fullstructcomp.DefaultMin)},
+		{errsemantics.Analyzer, "equality", "false"},
 	}
 	for _, rule := range configurable {
 		t.Run(rule.shared.Name, func(t *testing.T) {

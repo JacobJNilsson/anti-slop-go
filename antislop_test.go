@@ -11,9 +11,9 @@ func TestAnalyzersReturnsRegisteredRules(t *testing.T) {
 	if got == nil {
 		t.Fatal("Analyzers() returned nil; consumers range over the result")
 	}
-	// The spec (docs/spec/002-rules.md) defines rules G01-G12. Grow this
-	// expectation with each implemented analyzer.
-	if len(got) != 12 {
+	// The spec (docs/spec/002-rules.md) defines the rules G01-G13. Grow
+	// this expectation with each implemented analyzer.
+	if len(got) != 13 {
 		t.Fatalf("Analyzers() returned %d analyzers; update this test with the rule set", len(got))
 	}
 }

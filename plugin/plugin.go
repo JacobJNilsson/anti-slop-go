@@ -22,6 +22,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
@@ -47,6 +48,7 @@ var optInRules = map[string]bool{
 	nointerfacereturn.Analyzer.Name: true, // G09
 	justifypanic.Analyzer.Name:      true, // G11
 	fullstructcomp.Analyzer.Name:    true, // G12
+	errsemantics.Analyzer.Name:      true, // G13
 }
 
 // Settings is the configuration surface of the plugin. golangci-lint
@@ -73,6 +75,13 @@ type Settings struct {
 	// field is a pointer: the decoder writes zero for an absent key of
 	// an integer field, and zero is a setting of its own.
 	FullStructCompMin *int `json:"fullstructcomp-min"`
+
+	// Equality turns on the equality forms of rule G13. Such a form
+	// compares the message of an error against a string. A package
+	// writes that form about its own messages, and the Go wiki page
+	// TestComments accepts it. The rule therefore leaves the form alone
+	// until this setting is true.
+	Equality bool `json:"errsemantics-equality"`
 
 	// Enable names the opt-in rules to run. A rule that is on by
 	// default is not a choice, so a name outside optInRules is an
@@ -138,6 +147,8 @@ func (p *plugin) configured() []*analysis.Analyzer {
 			all[i] = noreflect.New(p.settings.ReflectAllow)
 		case fullstructcomp.Analyzer.Name:
 			all[i] = fullstructcomp.New(p.minFields())
+		case errsemantics.Analyzer.Name:
+			all[i] = errsemantics.New(p.settings.Equality)
 		}
 	}
 

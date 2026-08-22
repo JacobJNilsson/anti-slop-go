@@ -68,7 +68,8 @@ The rule catalogue differs because the type systems differ:
 
 Go also needs rules with no upstream parent. Errors are values in Go,
 panics are a Go-specific escape hatch, and the Go style guides ask a
-test to compare a whole structure. See rules G10, G11, and G12.
+test to compare a whole structure and to assert the identity of an
+error. See rules G10 through G13.
 
 ## Related work
 
@@ -95,11 +96,20 @@ them here:
   word. It reports "functions that return interfaces, but the actual
   returned value is always a single concrete implementation". It is off
   by default, and it is one of the five analyzers of that linter. The
-  other four report other kinds of interface pollution. G09 carries two
-  things that `opaque` does not. The first is the exemption for an
-  interface that the package under analysis declares, which a scan
-  measured at 101 findings of 378. The second is the `CONTRACT:` escape
-  for a signature that an external API fixes. Enable one, not both.
+  remaining four report different kinds of interface pollution. G09
+  carries two things that `opaque` does not. The first is the exemption
+  for an interface that the package under analysis declares, which a
+  scan measured at 101 findings of 378. The second is the `CONTRACT:`
+  escape for a signature that an external API fixes. Enable one, not
+  both.
+- `errorlint` and `testifylint`: both read the error VALUE, and neither
+  one reads the text of a message. `errorlint` reports `err == target`,
+  `err.(*T)`, and a `%v` verb where `%w` belongs. `testifylint`
+  `error-is-as` reports a sentinel in the `msgAndArgs` tail of
+  `assert.Error`, an `errors.Is` call inside `assert.True`, and
+  `assert.IsType` on an error. Rule G13 reads the other half: a test
+  that decides from the words of the message. Enable all three; they do
+  not overlap.
 - `staticcheck`, `govet`, `revive`: general correctness and idiom.
 - `depguard`: a deny list of import paths. It covers the plain half of
   rule G07, which is "no package imports `reflect`". G07 keeps its own
