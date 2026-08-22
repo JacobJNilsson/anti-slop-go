@@ -2176,3 +2176,14 @@ plugin justify themselves.
 - **Ignored errors**: `errcheck` owns this. Duplication creates
   configuration drift.
 - **Comment and documentation tone**: out of scope; see 001 non-goals.
+- **Narrow a parameter that the body downcasts**: a function that
+  asserts a parameter to a narrower type looks like a function with a
+  weak signature. Such a function cannot proceed when the assertion
+  fails. A scan of the standard library, `golang.org/x/tools`, and
+  three project corpora found 168 such assertions in the two idiomatic
+  corpora. It found 3 in the project corpora, and all 3 sit in test
+  files. In 85 percent of them the caller holds only the wide type, so
+  no signature change is available. 57 percent assert on a sealed
+  interface, where the type switch is a sum type and `gochecksumtype`
+  is the right tool. G01 already owns the single-result form. Out of
+  scope.
