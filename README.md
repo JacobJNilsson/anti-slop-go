@@ -8,19 +8,21 @@ This project applies the same philosophy to Go.
 
 ## Status
 
-Implementation phase. Eleven analyzers are available. Nine run by
+Implementation phase. Twelve analyzers are available. Nine run by
 default: `safetyassert` (rule G01), `nountypedmap` (G02), `noanyparam`
 (G03), `noanyreturn` (G04), `nolaundering` (G05), `noadhoctypeswitch`
 (G06), `noreflect` (G07), `nomonkeypatch` (G08), and `noerrorassert`
-(G10). Two are opt-in. `nointerfacereturn` (G09) reports an interface
+(G10). Three are opt-in. `nointerfacereturn` (G09) reports an interface
 result that every return of the body builds from one concrete type; it
 asks a project to change signatures. `justifypanic` (G11) asks for a
 `// PANICS:` comment above a `panic`, a `log.Fatal`, or an `os.Exit`
-of library code. The golangci-lint plugin keeps both off until the
+of library code. `fullstructcomp` (G12) reports a test that asserts
+field after field of one value, and it asks for one `cmp.Diff` against
+a want value. The golangci-lint plugin keeps all three off until the
 `enable` setting names them. The standalone binary and `go vet
 -vettool` read no configuration file, so they run every rule, and
-`-nointerfacereturn=false` or `-justifypanic=false` turns one off
-there.
+`-nointerfacereturn=false`, `-justifypanic=false`, or
+`-fullstructcomp=false` turns one off there.
 Read the specification in [`docs/spec`](docs/spec):
 
 1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
@@ -79,14 +81,16 @@ linters:
             - example.com/app/internal/ingest
           reflect-allow:
             - example.com/app/internal/codec
+          fullstructcomp-min: 3
           enable:
             - nointerfacereturn
             - justifypanic
+            - fullstructcomp
           disable:
             - nountypedmap
 ```
 
-Eight points about this file:
+Nine points about this file:
 
 - `type: module` is necessary. Without it, golangci-lint looks for a
   shared object file.
@@ -102,9 +106,10 @@ Eight points about this file:
 - `disable` drops a rule from the default set, which holds the nine
   rules that the Status section names as default rules. A configuration
   that disables every rule is legal, and the linter then reports
-  nothing. `enable` turns on an opt-in rule: `nointerfacereturn` and
-  `justifypanic` are the opt-in rules today. A name that is on by
-  default stops the run, because `enable` would do nothing for it.
+  nothing. `enable` turns on an opt-in rule: `nointerfacereturn`,
+  `justifypanic`, and `fullstructcomp` are the opt-in rules today. A
+  name that is on by default stops the run, because `enable` would do
+  nothing for it.
 - The standalone binary and `go vet -vettool` read no configuration
   file, so they run every rule, the opt-in ones included. Each analyzer
   has a flag of its own there: `-justifypanic=false` drops one rule,
@@ -123,6 +128,11 @@ Eight points about this file:
 - `reflect-allow` names the packages that may import `reflect`, which
   rule `noreflect` (G07) reads. The standalone flag is
   `-noreflect.allow`.
+- `fullstructcomp-min` names the number of distinct fields of one value
+  that a report of rule `fullstructcomp` (G12) needs. The default is 2.
+  A project that meets the mid-flow checkpoint shape, where each step
+  of a scenario asserts the one field it changed, raises the number.
+  The standalone flag is `-fullstructcomp.min`.
 
 Run the new binary with `./custom-gcl run ./...`.
 

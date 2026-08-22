@@ -2,6 +2,7 @@ package antislopplugin
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	antislop "github.com/JacobJNilsson/anti-slop-go"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
@@ -448,27 +450,34 @@ func TestBuildAnalyzersGivesNoadhoctypeswitchItsPatterns(t *testing.T) {
 // shared one.
 func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 	built, err := build(t, map[string]any{
-		"reflect-allow":     []any{"allowed"},
-		"boundary-packages": []any{"boundary"},
+		"reflect-allow":      []any{"allowed"},
+		"boundary-packages":  []any{"boundary"},
+		"fullstructcomp-min": 3,
+		"enable":             []any{fullstructcomp.Analyzer.Name},
 	})
 	if err != nil {
 		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
 	}
 
+	// Each rule states the value its shared analyzer reads with no
+	// setting. A pattern list is empty there, and a number is the
+	// default of its rule.
 	configurable := []struct {
 		shared *analysis.Analyzer
 		flag   string
+		clean  string
 	}{
-		{noreflect.Analyzer, "allow"},
-		{noadhoctypeswitch.Analyzer, "boundary"},
+		{noreflect.Analyzer, "allow", ""},
+		{noadhoctypeswitch.Analyzer, "boundary", ""},
+		{fullstructcomp.Analyzer, "min", strconv.Itoa(fullstructcomp.DefaultMin)},
 	}
 	for _, rule := range configurable {
 		t.Run(rule.shared.Name, func(t *testing.T) {
 			if configured := byName(t, built, rule.shared.Name); configured == rule.shared {
-				t.Error("BuildAnalyzers returned the shared analyzer; the next run would inherit these patterns")
+				t.Error("BuildAnalyzers returned the shared analyzer; the next run would inherit these settings")
 			}
-			if got := rule.shared.Flags.Lookup(rule.flag).Value.String(); got != "" {
-				t.Errorf("the shared analyzer holds the patterns %q of one run", got)
+			if got := rule.shared.Flags.Lookup(rule.flag).Value.String(); got != rule.clean {
+				t.Errorf("the shared analyzer holds the setting %q of one run", got)
 			}
 		})
 	}
@@ -486,4 +495,59 @@ func byName(t *testing.T, as []*analysis.Analyzer, name string) *analysis.Analyz
 	t.Fatalf("the built rule set holds no rule named %q", name)
 
 	return nil
+}
+
+// The fullstructcomp-min setting is the configuration surface of rule
+// G12 on the golangci-lint path. golangci-lint sets no analyzer flag,
+// so the plugin builds the analyzer through its constructor.
+func TestNewDecodesFullStructCompMin(t *testing.T) {
+	p, err := New(map[string]any{"fullstructcomp-min": 3})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if got.settings.FullStructCompMin == nil {
+		t.Fatal("fullstructcomp-min = none; want the number the settings hold")
+	}
+	if *got.settings.FullStructCompMin != 3 {
+		t.Errorf("fullstructcomp-min = %d; want 3", *got.settings.FullStructCompMin)
+	}
+}
+
+// A configuration that names no number gets the default of the rule.
+// The field is a pointer for this reason: an integer field would read
+// an absent key as zero, and zero is a setting of its own.
+func TestBuildAnalyzersDefaultsTheMinimum(t *testing.T) {
+	p, err := New(map[string]any{})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if min := got.minFields(); min != fullstructcomp.DefaultMin {
+		t.Errorf("min = %d; want the default %d of the rule", min, fullstructcomp.DefaultMin)
+	}
+}
+
+// The number must reach the analyzer, so this test runs the analyzer
+// that BuildAnalyzers returned. The fixture holds a run of two fields
+// and a run of three, so one run tests both directions of the setting.
+func TestBuildAnalyzersGivesFullstructcompItsMinimum(t *testing.T) {
+	built, err := build(t, map[string]any{
+		"fullstructcomp-min": 3,
+		"enable":             []any{fullstructcomp.Analyzer.Name},
+	})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+
+	configured := byName(t, built, fullstructcomp.Analyzer.Name)
+	analysistest.Run(t, analysistest.TestData(), configured, "structmin")
 }
