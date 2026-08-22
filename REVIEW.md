@@ -11,7 +11,7 @@ asking the wrong questions.
 A reviewer without context can only lint. Every review brief carries:
 
 - **Why these commits exist**: the motivating spec rule or issue, in one or two
-  sentences, with the rule ID (G01-G12) or issue number.
+  sentences, with the rule ID (G01-G13) or issue number.
 - **The problem**: what is missing or wrong, with concrete evidence.
 - **The intended solution**: how the change is SUPPOSED to solve the problem,
   mechanism by mechanism, as the author understands it.

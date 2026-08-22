@@ -1,6 +1,6 @@
 # 002: Rule catalogue
 
-Each rule has an identifier (G01-G12), an analyzer name, a default
+Each rule has an identifier (G01-G13), an analyzer name, a default
 severity, and a statement of what it rejects and why. Examples show a
 rejected form and an accepted form.
 
@@ -10,7 +10,8 @@ Severity levels:
 - **opt-in**: off by default; the project must enable it.
 
 G03 and G04 share one exemption. The section "The external contract
-exemption", after G12, describes it, and both rules point at it.
+exemption", after the last rule, describes it, and both rules point at
+it.
 
 ## G01 `safetyassert`: require a SAFETY comment for panicking type assertions (error)
 
@@ -1853,6 +1854,242 @@ the 133 groups of that script. The one added finding sits in
 `encoding/gob/codec_test.go`, where `(***i.A)[0] != 11` names one field
 of `i` through parentheses. The analyzer reads parentheses, and the
 script did not.
+
+## G13 `errsemantics`: assert the identity of an error, not its text (opt-in)
+
+A test that reads the message of an error decides from prose. No API
+promises the words. Such a test passes for another error with the same
+words, and it fails for the right error after a reword. The identity of
+the error is the evidence: `errors.Is` names a sentinel, and
+`errors.As` names a type. Both survive a reword.
+
+The source is the Go wiki page TestComments, section "Test Error
+Semantics"
+(<https://go.dev/wiki/TestComments#test-error-semantics>): "don't use
+string comparison to check what type of error your function returns."
+
+Rejected:
+
+```go
+if !strings.Contains(err.Error(), "run id must be non-empty") {
+    t.Errorf("Seed() error = %v, want a run id error", err)
+}
+```
+
+Accepted:
+
+```go
+if !errors.Is(err, ErrEmptyRunID) {
+    t.Errorf("Seed() error = %v, want ErrEmptyRunID", err)
+}
+```
+
+G10 and G13 are one idea in two halves. G10 owns the type assertion on
+an error, and G13 owns the string. Evidence about an error is its
+identity, and never its prose.
+
+### Where the rule reads
+
+The rule reads test files only, which `go/ast` and the file name
+decide. Production code that reads a message renders it for a person,
+and it decides no test. The rule skips generated files, which `go/ast`
+recognizes by the `Code generated ... DO NOT EDIT.` header.
+
+The rule reads the static type of the operand. It reports the
+predeclared `error` type and an alias of it, such as `type E = error`.
+That is the narrow test of G10, word for word. A type that declares
+`Error() string` under another name is another type, and `errors.Is`
+answers no question about it.
+
+### The forms the rule reports
+
+The rule resolves every callee to the package that declares it. A
+local package named `strings` therefore reports nothing, and a library
+that carries the names of testify under another import path reports
+nothing either. The rule reports:
+
+- an `err.Error()` call in an argument of `strings.Contains`,
+  `strings.HasPrefix`, `strings.HasSuffix`, or `strings.EqualFold`;
+- an `err.Error()` call in an argument of `regexp.MatchString` or of
+  the `MatchString` method of `regexp.Regexp`;
+- `ErrorContains`, `ErrorContainsf`, `Regexp`, and `Regexpf` of
+  testify, where an argument carries an error or its message. The text
+  asserts of testify take the error itself, so no `Error` call appears
+  there. The rule reads every package under
+  `github.com/stretchr/testify/`, so `assert`, `require`, and the
+  receiver form of `Assertions` all report.
+
+`regexp.Match` takes bytes. An error message reaches it through a
+conversion, which is no direct argument, so that function is out. A
+method of the project that carries the name `MatchString` is another
+object, and the rule leaves it alone.
+
+**The rule never reads the failure message of a testify call**. Every
+testify function the rule reads takes the testing value first. The two
+values it asserts on follow. Everything after those is the failure
+message: the variadic `msgAndArgs` tail, and the format string of a
+name that ends in `f`.
+The rule therefore reads the first three arguments of such a call, and
+the first two of the receiver form of `Assertions`. An error in the
+failure message is diagnostic output, and
+`assert.Regexp(t, "x", s, "read failed: %v", err)` stays clean. A
+report there would name a correct line and would offer `errors.Is` as
+the repair of a printed message.
+
+### The equality setting
+
+Two more forms stay off until the `errsemantics-equality` setting is
+true. `-errsemantics.equality` is the same setting outside
+golangci-lint:
+
+- an `err.Error()` call in a `==` or `!=` comparison;
+- `EqualError`, `EqualErrorf`, `Equal`, and `Equalf` of testify.
+  `EqualError` takes the error itself. `Equal` takes two values of any
+  type, so it reports only where an argument is an `Error` call. An
+  assertion on the error value itself is no text assertion, and
+  `testifylint` owns that ground.
+
+A package that tests its own message text writes the equality form, and
+the wiki page accepts that. The standard library holds 119 equality
+findings and 163 default findings, so the setting holds back 119 of its
+282 findings, which is 42 percent. The three private corpora of the
+Measurement section hold 5 equality findings against 1093 findings in
+all, so the setting costs those projects almost nothing.
+
+### What stays clean
+
+- **Diagnostic output.** `t.Errorf`, `t.Logf`, `t.Fatalf`, and
+  `fmt.Sprintf` print a message and decide nothing. An `Error` call
+  counts where it sits in an argument of a reported call, or in an
+  operand of a reported comparison, and nowhere else.
+- **A message that flows through a variable.** The rule reads the
+  direct argument, so `msg := err.Error()` and a later
+  `strings.Contains(msg, ...)` stay clean. This is a gap and no ruling.
+- **A conversion of the message**, such as `[]byte(err.Error())`, for
+  the same reason.
+- **A message that `fmt.Sprintf` carries.** A `%v` of an error inside a
+  format string launders it past the rule. This is the second gap, and
+  a value graph would answer both. 003 records that work for G05.
+- **A value that is no error.** A type that declares `Error() string`
+  under another name is one such value. A plain string variable that
+  holds a message is another. The rule reads types and no history.
+- **A call through a function value**, such as `var c = strings.Contains`
+  and a later `c(err.Error(), ...)`. The call names a variable, and the
+  rule reads the object.
+- **Every production file, and every generated file.** A helper
+  package that is no test file is production code by this test. An
+  `internal/testutil` that holds the assertions of a project is such a
+  package, and the rule never reads it. That is a gap of the file test, and the
+  project accepts it: the file name is the test the go tool applies.
+
+### Positions and no marker
+
+The diagnostic sits at the call, and at the operator of a comparison.
+That expression is the predicate, and it is the line the author
+rewrites.
+
+No comment stops a report. `errors.Is` and `errors.As` exist in every
+version of Go this module supports, so a marker would justify a shape
+that has a fix. G10 states the same, and both rules keep the family of
+markers small. The escapes are the opt-in severity, the `disable`
+setting, and the equality setting.
+
+### Measurement
+
+The scan ran the standalone binary with `-errsemantics` over `./...` in
+each corpus, with Go 1.26.2 on darwin/arm64. Three corpora hold
+AI-assisted Go, and two hold idiomatic Go for comparison.
+
+| Corpus | Test files | Default forms | Per test file | Equality forms |
+| --- | --- | --- | --- | --- |
+| GOROOT `src` | 1678 | 163 | 0.10 | 119 |
+| `golang.org/x/tools` v0.41.0 | 270 | 24 | 0.09 | 7 |
+| Private A | 139 | 31 | 0.22 | 1 |
+| Private B | 86 | 130 | 1.51 | 0 |
+| Private C | 404 | 927 | 2.29 | 4 |
+
+Two rows name a public artifact, and a reader repeats those two scans.
+The other three are private Go repositories of the author. Private A is
+a service, Private B is a research tool, and Private C is an ingestion
+pipeline. Those clones move with every commit. The scan ran on
+2026-08-22, against Private A at `03ef4044`, Private B at `0faf8fc`,
+and Private C at `3b102677`, which was `origin/main` of that repository
+on that day. A later scan of the same corpora gives other numbers.
+
+Private A, B, and C give 2.3, 15.6, and 23.6 times the findings per
+test file of the standard library. No other rule of this project
+separates the two kinds of corpus that far. Private A sits lowest,
+because that project settled on `errors.Is` early.
+
+### The severity decision
+
+The severity is opt-in, and the volume is not the reason. The reason is
+one sentence of the same wiki section: "It's OK to use string
+comparisons to check that error messages coming from the package under
+test satisfy some property, for example, that it includes the parameter
+name."
+
+The wiki page therefore permits a whole class inside the default forms,
+and no form separates it. A reading of 28 findings measured the class.
+The sample took 12 findings of GOROOT, 6 of Private C, 4 of Private B,
+3 of Private A, and 3 of `x/tools`, at random from each list.
+
+- All 28 read the message of an error that the package under test
+  produced. The rule cannot see that, because the origin of an error
+  value is no static fact.
+- 7 decide which error came back, from a table field such as
+  `test.err`, `tc.wantErrText`, or `tc.want`. That shape decides which
+  error came back from the words alone, which the wiki page rejects,
+  and it is the finding this rule wants.
+- The other 21 check a property of a message the package owns. Private
+  B asserts that a failure names its input file. Private C asserts that
+  a message names the pipeline step that failed. `crypto/x509` asserts
+  the words " but have public key of type ". Each one is the parameter
+  check the wiki page names.
+- 2 of the 3 Private A findings sit one line below an identity
+  assertion on the same error, which is `require.ErrorIs` or
+  `errors.Is`. The test already asks the question the rule asks, and
+  the text check adds a property of the message. A report there names
+  correct code.
+
+The permitted class covers less than those 21 findings suggest. One
+Private C finding of the sample matches the text of an error that the
+test itself injected through a stub. The test owns that value, so no
+message of the package under test is under examination. `errors.Is`
+against the injected sentinel is a repair of one line. A review of a
+larger sample would move findings from the permitted class into the
+class the rule wants. A second reading of 20 more findings reached the
+same share, so the opt-in severity stands. A project that wants this
+rule at error severity re-measures that share first.
+
+An opt-in rule that a project turns on deliberately is the honest
+answer. Such a project decides that its tests must read no message at
+all, and it accepts the property checks with them. A default severity
+would report 163 findings against the standard library, and the wiki
+page permits most of them.
+
+The project considered one refinement and rejected it. The rule could
+skip a text check that sits beside an identity assertion on the same
+error. That heuristic reads a second statement and guesses at the
+intention. It also gives nothing to the standard library, where the
+sample held no identity assertion at all. 001 asks for the smaller
+check, and the opt-in severity is smaller than the heuristic.
+
+### Prior art
+
+No linter reads this ground. Both of the linters that come near stop at
+the error value:
+
+- `errorlint` reports `err == target`, `err.(*T)`, and a `%v` verb
+  where `%w` belongs. Its comparison check reads the error value. This
+  rule reads the string that `Error()` returns.
+- `testifylint` `error-is-as` reads the error value as well. In v1.6.4
+  it reports `assert.Error` and `assert.NoError` with a sentinel in the
+  `msgAndArgs` tail. It reports `assert.True` and `assert.False` around
+  an `errors.Is` or `errors.As` call, and `assert.IsType` on an error. It
+  names `EqualError` and `ErrorContains` under `require-error` only,
+  which asks for `require` in the place of `assert`. No checker of that
+  linter reads the text of a message.
 
 ## The external contract exemption, shared by G03 and G04
 
