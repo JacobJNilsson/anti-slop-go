@@ -6,31 +6,6 @@ This project is a Go companion to [dmmulroy/anti-slop](https://github.com/dmmulr
 The upstream project targets TypeScript and JavaScript through Oxlint.
 This project applies the same philosophy to Go.
 
-## Status
-
-Implementation phase. Thirteen analyzers are available. Nine run by
-default: `safetyassert` (rule G01), `nountypedmap` (G02), `noanyparam`
-(G03), `noanyreturn` (G04), `nolaundering` (G05), `noadhoctypeswitch`
-(G06), `noreflect` (G07), `nomonkeypatch` (G08), and `noerrorassert`
-(G10). Four are opt-in. `nointerfacereturn` (G09) reports an interface
-result that every return of the body builds from one concrete type; it
-asks a project to change signatures. `justifypanic` (G11) asks for a
-`// PANICS:` comment above a `panic`, a `log.Fatal`, or an `os.Exit`
-of library code. `fullstructcomp` (G12) reports a test that asserts
-field after field of one value, and it asks for one `cmp.Diff` against
-a want value. `errsemantics` (G13) reports a test that reads the text
-of an error message. The fix is `errors.Is` with a sentinel, or
-`errors.As` with a target type. The golangci-lint plugin keeps all
-four off until the `enable` setting names them. The standalone binary
-and `go vet -vettool` read no configuration file, so they run every
-rule, and `-nointerfacereturn=false`, `-justifypanic=false`,
-`-fullstructcomp=false`, or `-errsemantics=false` turns one off there.
-Read the specification in [`docs/spec`](docs/spec):
-
-1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
-2. [Rules](docs/spec/002-rules.md): the rule catalogue with examples.
-3. [Implementation](docs/spec/003-implementation.md): architecture, distribution, and configuration.
-
 ## The idea in one paragraph
 
 Code generators produce code that compiles but carries no evidence.
@@ -39,6 +14,57 @@ A type assertion with no stated invariant, an `any` parameter, or a
 reader. These rules reject such patterns. The author must decode input
 at its I/O boundary, keep concrete types inside the program, and write
 a `// SAFETY:` justification where an assertion is the correct tool.
+
+## The rules
+
+Nine rules run by default.
+
+| ID | Rule | Reports |
+| --- | --- | --- |
+| G01 | `safetyassert` | A panicking type assertion without a `SAFETY:` comment above it. |
+| G02 | `nountypedmap` | A map with an `any` value type in a signature, a struct field, or a package variable. |
+| G03 | `noanyparam` | An `any` parameter outside the exemptions that the specification states. |
+| G04 | `noanyreturn` | An `any` result. |
+| G05 | `nolaundering` | A value that passes through `any` and comes back through an assertion. |
+| G06 | `noadhoctypeswitch` | A type switch on an `any` value outside a package that decodes input. |
+| G07 | `noreflect` | An import of `reflect` outside an allowed package. A test file that only calls `reflect.DeepEqual` stays clean. |
+| G08 | `nomonkeypatch` | A test that rewires production code: an assignment to a package-level variable, an import of a runtime patching library, or a `//go:linkname` directive. |
+| G10 | `noerrorassert` | A type assertion or a type switch on an `error` value, where `errors.As` answers the question. |
+
+Four rules are opt-in. The `enable` setting of the golangci-lint plugin
+turns one on.
+
+| ID | Rule | Reports |
+| --- | --- | --- |
+| G09 | `nointerfacereturn` | An interface result where every return statement builds the same concrete type. |
+| G11 | `justifypanic` | A `panic`, an `os.Exit`, or a `log.Fatal` call outside `main`, `init`, and test files, with no `PANICS:` comment above it. |
+| G12 | `fullstructcomp` | A test that asserts a value field by field instead of one `cmp.Diff`. |
+| G13 | `errsemantics` | A test that reads the text of an error instead of its identity. |
+
+The IDs come from the specification, where the rules stand in the order
+of their writing. Each table therefore skips the IDs of the other.
+
+The specification carries the full contract of each rule, with examples
+and the measurements behind every decision:
+
+1. [Overview](docs/spec/001-overview.md): philosophy, goals, and scope.
+2. [Rules](docs/spec/002-rules.md): the rule catalogue.
+3. [Implementation](docs/spec/003-implementation.md): architecture, distribution, and configuration.
+
+## A first run
+
+The standalone binary needs no setup:
+
+```sh
+go run github.com/JacobJNilsson/anti-slop-go/cmd/antislop@latest ./...
+```
+
+This path reads no configuration file, so it runs every rule, the
+opt-in ones included. `-justifypanic=false` turns that one rule off.
+`-errsemantics` alone runs that one rule and no other. The same
+command satisfies the `go vet -vettool` contract: install it with
+`go install github.com/JacobJNilsson/anti-slop-go/cmd/antislop@latest`,
+then give `-vettool` the path of the installed binary.
 
 ## Use with golangci-lint
 
@@ -53,12 +79,13 @@ destination: .
 plugins:
   - module: github.com/JacobJNilsson/anti-slop-go
     import: github.com/JacobJNilsson/anti-slop-go/plugin
-    version: v0.2.0
+    version: v1.1.0
 ```
 
 The `import` line is necessary. The registration lives in the `plugin`
 subpackage, not in the module root. The `version` line takes a tag of
-this repository; `v0.2.0` is the release that this section shipped in.
+this repository. Take the newest one from the
+[tag list](https://github.com/JacobJNilsson/anti-slop-go/tags).
 
 Run `golangci-lint custom` in that directory. The command clones
 golangci-lint, adds this module, and writes a `custom-gcl` binary. It
@@ -108,16 +135,12 @@ Ten points about this file:
   settings, not with `linters.enable`. An unknown rule name in either
   plugin setting stops the run.
 - `disable` drops a rule from the default set, which holds the nine
-  rules that the Status section names as default rules. A configuration
-  that disables every rule is legal, and the linter then reports
-  nothing. `enable` turns on an opt-in rule: `nointerfacereturn`,
-  `justifypanic`, `fullstructcomp`, and `errsemantics` are the opt-in
-  rules today. A name that is on by default stops the run, because
-  `enable` would do nothing for it.
-- The standalone binary and `go vet -vettool` read no configuration
-  file, so they run every rule, the opt-in ones included. Each analyzer
-  has a flag of its own there: `-justifypanic=false` drops one rule,
-  and `-justifypanic` runs that rule alone.
+  rules of the first table above. A configuration that disables every
+  rule is legal, and the linter then reports nothing. `enable` turns on
+  an opt-in rule from the second table. A name that is on by default
+  stops the run, because `enable` would do nothing for it.
+- The standalone binary and `go vet -vettool` read none of this file.
+  The section "A first run" states what they read instead.
 - Two settings name packages by path pattern. A pattern matches the
   whole import path: `*` holds inside one segment, `...` crosses a
   slash, and a pattern that ends in `/...` names the package above it
