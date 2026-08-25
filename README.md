@@ -93,7 +93,7 @@ this repository. Take the newest one from the
 Run `golangci-lint custom` in that directory. The command clones
 golangci-lint, adds this module, and writes a `custom-gcl` binary. It
 needs network access, `git`, and a Go toolchain that satisfies the `go`
-directive of this module (see [go.mod](go.mod); Go 1.26 today).
+directive of this module (see [go.mod](go.mod)).
 
 Then configure the linter in `.golangci.yml`:
 
