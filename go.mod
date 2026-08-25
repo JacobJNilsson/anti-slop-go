@@ -1,6 +1,6 @@
 module github.com/JacobJNilsson/anti-slop-go
 
-go 1.26
+go 1.24.0
 
 require (
 	github.com/golangci/plugin-module-register v0.1.2
