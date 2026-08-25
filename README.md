@@ -1,5 +1,8 @@
 # anti-slop-go
 
+[![CI](https://github.com/JacobJNilsson/anti-slop-go/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobJNilsson/anti-slop-go/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/JacobJNilsson/anti-slop-go.svg)](https://pkg.go.dev/github.com/JacobJNilsson/anti-slop-go)
+
 Opinionated `go/analysis` rules that reject low-evidence Go patterns.
 
 This project is a Go companion to [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop).
