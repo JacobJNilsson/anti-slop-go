@@ -47,10 +47,8 @@ comment text, so `NOT-SAFETY:` is no justification. The full marker
 contract is in 003.
 This rule supersedes `forcetypeassert`.
 
-The rule skips generated files, which `go/ast` recognises by the
-`Code generated ... DO NOT EDIT.` header. Nobody edits a generated file
-to add a justification, so a diagnostic there is noise the project
-cannot fix.
+The rule skips generated files. 003 states the header forms the module
+accepts.
 
 ## G02 `nountypedmap`: no untyped maps in signatures and fields (error)
 
@@ -68,9 +66,8 @@ The rule never flags a local variable. A decode function keeps its
 untyped map inside the function body, and the configuration needs no
 allowlist for it.
 
-The rule skips generated files, which `go/ast` recognises by the
-`Code generated ... DO NOT EDIT.` header. A program writes the file, so
-a diagnostic there has no reader who can act on it.
+The rule skips generated files. 003 states the header forms the module
+accepts.
 
 Rejected:
 
@@ -146,9 +143,8 @@ Accepted:
 func Store[V Storable](key string, value V) error
 ```
 
-The rule skips generated files, which `go/ast` recognises by the
-`Code generated ... DO NOT EDIT.` header. A program writes the file, so
-a diagnostic there has no reader who can act on it.
+The rule skips generated files. 003 states the header forms the module
+accepts.
 
 ## G04 `noanyreturn`: no `any` returns (error)
 
@@ -176,9 +172,8 @@ Accepted:
 func Lookup(key string) (Record, error)
 ```
 
-The rule skips generated files, which `go/ast` recognises by the
-`Code generated ... DO NOT EDIT.` header. A program writes the file, so
-a diagnostic there has no reader who can act on it.
+The rule skips generated files. 003 states the header forms the module
+accepts.
 
 ## G05 `nolaundering`: no widen-then-assert (error)
 
@@ -311,9 +306,8 @@ function literal that reads the variable drops the binding, because the
 analyzer cannot see when the program runs the literal. A variable whose
 address escapes drops too. 003 records what an SSA pass would add.
 
-The rule skips generated files, which `go/ast` recognises by the
-`Code generated ... DO NOT EDIT.` header. A program writes the file, so
-a diagnostic there has no reader who can act on it.
+The rule skips generated files. 003 states the header forms the module
+accepts.
 
 ## G06 `noadhoctypeswitch`: no ad hoc type switches on `any` (error)
 
@@ -504,9 +498,7 @@ parameter keeps its report.
 
 ### What the rule leaves alone
 
-- **A generated file**, which `go/ast` recognises by the
-  `Code generated ... DO NOT EDIT.` header. A program writes the file,
-  so a diagnostic there has no reader who can act on it.
+- **A generated file.** 003 states the header forms the module accepts.
 - **A package that a boundary pattern names**, in every file of it.
 - **An operand that is no empty interface**: an error, a defined type,
   and every interface with a method.
@@ -708,9 +700,7 @@ through an `Equal` method or a comparison of fields.
 
 ### What the rule leaves alone
 
-- **A generated file**, which `go/ast` recognises by the
-  `Code generated ... DO NOT EDIT.` header. A program writes the file,
-  so a diagnostic there has no reader who can act on it.
+- **A generated file.** 003 states the header forms the module accepts.
 - **A package that a pattern allows**, in every file of it.
 
 No comment stops a report. `SAFETY:` states an invariant and
@@ -864,9 +854,7 @@ rule reports the comment. A comment with another name, such as
   shim. The rule cannot judge it, and the blast radius of a wrong
   report there is large. The narrow rule reports the test files, where
   the directive is a patch.
-- **Generated files**, which `go/ast` recognises by the
-  `Code generated ... DO NOT EDIT.` header. A program writes the file,
-  so a diagnostic there has no reader who can act on it.
+- **Generated files.** 003 states the header forms the module accepts.
 
 ### Decisions the rule states
 
@@ -1082,8 +1070,8 @@ comment directly above the declaration. Such a comment covers every
 result of the signature. 003 states the comment contract. The analyzer
 cannot judge the text; review must.
 
-The rule skips generated files. A program writes the file, so a
-diagnostic there has no reader who can act on it.
+The rule skips generated files. 003 states the header forms the module
+accepts.
 
 ### Why the rule is opt-in
 
@@ -1246,10 +1234,8 @@ guess, and each entry would hide real findings elsewhere. A package
 that implements the chain itself disables the rule.
 
 **Positions and files.** The diagnostic sits at the `.(` token of the
-assertion or of the switch guard. The rule skips generated files, which
-`go/ast` recognises by the `Code generated ... DO NOT EDIT.` header. A
-program writes the file, so a diagnostic there has no reader who can
-act on it.
+assertion or of the switch guard. The rule skips generated files. 003
+states the header forms the module accepts.
 
 **A test file gets no exemption.** Test code reads wrapped errors too.
 The fix costs more there than in production code. A test that asserts
@@ -1394,9 +1380,7 @@ placement the rule asks for, which is the line directly above the call.
   test binary, and the author of the test reads the stack trace at
   once. The exemption covers the whole file, so a helper of a test
   needs no comment.
-- **A generated file**, which `go/ast` recognises by the
-  `Code generated ... DO NOT EDIT.` header. Nobody edits such a file to
-  add a justification.
+- **A generated file.** 003 states the header forms the module accepts.
 - **A rethrow of a recovered value**, which the next section states.
 
 ### Decisions the rule states
@@ -1551,8 +1535,7 @@ entry. Every message of this rule names the option.
 **The files.** The rule reads test files, which are the files whose
 name ends in `_test.go`. It reads the test files of the package under
 test and the external test package the same way. It skips generated
-files, which `go/ast` recognises by the
-`Code generated ... DO NOT EDIT.` header.
+files. 003 states the header forms the module accepts.
 
 **The unit.** One function declaration. A function literal inside a
 declaration belongs to that declaration, because a subtest closure is
@@ -1892,8 +1875,8 @@ identity, and never its prose.
 
 The rule reads test files only, which `go/ast` and the file name
 decide. Production code that reads a message renders it for a person,
-and it decides no test. The rule skips generated files, which `go/ast`
-recognizes by the `Code generated ... DO NOT EDIT.` header.
+and it decides no test. The rule skips generated files. 003 states the
+header forms the module accepts.
 
 The rule reads the static type of the operand. It reports the
 predeclared `error` type and an alias of it, such as `type E = error`.
