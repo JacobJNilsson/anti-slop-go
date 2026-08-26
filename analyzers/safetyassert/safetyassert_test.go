@@ -15,8 +15,9 @@ func TestAnalyzer(t *testing.T) {
 }
 
 // TestSkipsGeneratedFiles pins the exemption for generated code. The
-// fixture holds an unjustified assertion and no want comment, so any
-// diagnostic fails the test.
+// package holds one file with the canonical header and one file with a
+// lax header. Each file holds an unjustified assertion and no want
+// comment, so any diagnostic fails the test.
 func TestSkipsGeneratedFiles(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), safetyassert.Analyzer, "gen")
 }
