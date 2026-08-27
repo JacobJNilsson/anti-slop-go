@@ -139,7 +139,8 @@ linters:
           disable:
             - noerrorassert         # when staticcheck covers it
           enable:
-            - nointerfacereturn     # opt-in rules
+            - noanyparam            # opt-in rules
+            - nointerfacereturn
             - justifypanic
             - fullstructcomp
             - errsemantics
@@ -148,9 +149,10 @@ linters:
 Every key of the example exists today: `boundary-packages`,
 `reflect-allow`, `fullstructcomp-min`, `fullstructcomp-maxignore`,
 `errsemantics-equality`, `enable`, and `disable`.
-`nointerfacereturn` (G09), `justifypanic`
-(G11), `fullstructcomp` (G12), and `errsemantics` (G13) are the opt-in
-rules that `enable` names.
+`noanyparam` (G03), `nointerfacereturn` (G09),
+`justifypanic` (G11), `fullstructcomp` (G12), and `errsemantics` (G13)
+are the five opt-in rules that `enable` names. The other eight rules
+run by default.
 
 Semantics:
 
@@ -198,8 +200,9 @@ because the plugin is the path that reads a configuration file.
 `optInRules` in `plugin/plugin.go` names such a rule, and
 `BuildAnalyzers` drops it until `enable` names it.
 
-`nointerfacereturn` (G09), `justifypanic` (G11), `fullstructcomp`
-(G12), and `errsemantics` (G13) are the opt-in rules today.
+`noanyparam` (G03), `nointerfacereturn` (G09), `justifypanic` (G11),
+`fullstructcomp` (G12), and `errsemantics` (G13) are the five opt-in
+rules today. The registry holds 13 rules, so 8 of them run by default.
 
 The other two paths read no configuration file, so they run every rule.
 Their switch is the flag that `multichecker` and `go vet` give to each

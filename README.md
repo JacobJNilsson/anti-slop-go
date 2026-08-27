@@ -17,13 +17,12 @@ a `// SAFETY:` justification where an assertion is the correct tool.
 
 ## The rules
 
-Nine rules run by default.
+Eight rules run by default.
 
 | ID | Rule | Reports |
 | --- | --- | --- |
 | G01 | `safetyassert` | A panicking type assertion without a `SAFETY:` comment above it. |
 | G02 | `nountypedmap` | A map with an `any` value type in a signature, a struct field, or a package variable. |
-| G03 | `noanyparam` | An `any` parameter outside the exemptions that the specification states. |
 | G04 | `noanyreturn` | An `any` result. |
 | G05 | `nolaundering` | A value that passes through `any` and comes back through an assertion. |
 | G06 | `noadhoctypeswitch` | A type switch on an `any` value outside a package that decodes input. |
@@ -31,11 +30,12 @@ Nine rules run by default.
 | G08 | `nomonkeypatch` | A test that rewires production code: an assignment to a package-level variable, an import of a runtime patching library, or a `//go:linkname` directive. |
 | G10 | `noerrorassert` | A type assertion or a type switch on an `error` value, where `errors.As` answers the question. |
 
-Four rules are opt-in. The `enable` setting of the golangci-lint plugin
+Five rules are opt-in. The `enable` setting of the golangci-lint plugin
 turns one on.
 
 | ID | Rule | Reports |
 | --- | --- | --- |
+| G03 | `noanyparam` | An `any` parameter outside the exemptions that the specification states. |
 | G09 | `nointerfacereturn` | An interface result where every return statement builds the same concrete type. |
 | G11 | `justifypanic` | A `panic`, an `os.Exit`, or a `log.Fatal` call outside `main`, `init`, and test files, with no `PANICS:` comment above it. |
 | G12 | `fullstructcomp` | A test that asserts a value field by field instead of one `cmp.Diff`. |
@@ -114,6 +114,7 @@ linters:
           fullstructcomp-maxignore: 5
           errsemantics-equality: true
           enable:
+            - noanyparam
             - nointerfacereturn
             - justifypanic
             - fullstructcomp
@@ -135,7 +136,7 @@ Eleven points about this file:
   individual rules with the plugin's own `enable` and `disable`
   settings, not with `linters.enable`. An unknown rule name in either
   plugin setting stops the run.
-- `disable` drops a rule from the default set, which holds the nine
+- `disable` drops a rule from the default set, which holds the eight
   rules of the first table above. A configuration that disables every
   rule is legal, and the linter then reports nothing. `enable` turns on
   an opt-in rule from the second table. A name that is on by default

@@ -26,6 +26,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
@@ -45,6 +46,7 @@ func init() { register.Plugin(name, New) }
 // the module holds every rule, because cmd/antislop and go vet read no
 // configuration file. 003 records that split.
 var optInRules = map[string]bool{
+	noanyparam.Analyzer.Name:        true, // G03
 	nointerfacereturn.Analyzer.Name: true, // G09
 	justifypanic.Analyzer.Name:      true, // G11
 	fullstructcomp.Analyzer.Name:    true, // G12
