@@ -12,7 +12,7 @@ import (
 // names no option and the expectation below anchors both ends.
 func TestChecklist(t *testing.T) {
 	got := build()
-	require.Equal(t, "boot", got.Name) // want `^assertions name 2 fields of got one at a time; compare the whole value with cmp.Diff against a want value; cmpopts.IgnoreFields skips a field the test cannot predict$`
+	require.Equal(t, "boot", got.Name) // want `^assertions name 2 fields of got one at a time; compare got as a whole with cmp.Diff against a want value; cmpopts.IgnoreFields skips a field the test cannot predict$`
 	require.Equal(t, 3, got.Count)
 }
 
@@ -59,10 +59,11 @@ func TestReceiverForm(t *testing.T) {
 }
 
 // A nested path is a field of its own, so "Inner" and "Inner.Label" are
-// two fields of one base.
+// two fields of one base. One path holds the other, and the anchor is
+// the parent of both, which is the base.
 func TestNestedField(t *testing.T) {
 	got := build()
-	require.Equal(t, Inner{Label: "run"}, got.Inner) // want `assertions name 2 fields of got one at a time`
+	require.Equal(t, Inner{Label: "run"}, got.Inner) // want `assertions name 2 fields of got one at a time; compare got as a whole`
 	require.Equal(t, "run", got.Inner.Label)
 }
 
@@ -134,11 +135,14 @@ func TestUnexportedField(t *testing.T) {
 
 // The walk reads the whole graph of the type. It meets the unexported
 // field through the map of the type, after the pointer, the slice, and
-// the array of a type that holds none.
+// the array of a type that holds none. The four assertions keep the
+// cost of the fix inside the maxignore setting.
 func TestUnexportedInTheGraph(t *testing.T) {
 	got := nest()
-	require.Equal(t, "boot", got.Equal) // want `assertions name 2 fields of got one at a time.*unexported field Leaf.hidden`
+	require.Equal(t, "boot", got.Equal) // want `assertions name 4 fields of got one at a time.*unexported field Leaf.hidden`
 	require.Equal(t, "cell", got.Ptr.Name)
+	require.Equal(t, Label("kind"), got.Kind)
+	require.Equal(t, "tag", got.Anon.Tag)
 }
 
 // The Equal method of the field takes a pointer, and the field holds a

@@ -111,6 +111,7 @@ linters:
           reflect-allow:
             - example.com/app/internal/codec
           fullstructcomp-min: 3
+          fullstructcomp-maxignore: 5
           errsemantics-equality: true
           enable:
             - nointerfacereturn
@@ -121,7 +122,7 @@ linters:
             - nountypedmap
 ```
 
-Ten points about this file:
+Eleven points about this file:
 
 - `type: module` is necessary. Without it, golangci-lint looks for a
   shared object file.
@@ -160,6 +161,12 @@ Ten points about this file:
   A project that meets the mid-flow checkpoint shape, where each step
   of a scenario asserts the one field it changed, raises the number.
   The standalone flag is `-fullstructcomp.min`.
+- `fullstructcomp-maxignore` sets the number of `cmpopts.IgnoreFields`
+  names that a comparison of rule `fullstructcomp` (G12) may need. The
+  rule counts those names. It reports no group above the setting,
+  because such a fix states more than the assertions it replaces. The
+  default is 5. A project that wants every checklist reported sets a
+  high number. The standalone flag is `-fullstructcomp.maxignore`.
 - `errsemantics-equality` is a boolean, and rule `errsemantics` (G13)
   reads it. It adds a report for a comparison of an error message
   against a string, such as `err.Error() == "..."` and the

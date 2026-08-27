@@ -40,8 +40,10 @@ if body itself. A call inside a nested block does not count.
 
 The base of an assertion is the variable at the root of the selector
 chain. The field is the whole path under it, so "got.A.B" names the
-field "A.B" of the base "got". A call stops the walk, because the
-result of a method is not a field. The analyzer groups by the declared
+field "A.B" of the base "got". The analyzer resolves the path through
+the type checker, so a promoted field gives the path of the embedded
+structure that declares it. A call stops the walk, because the result
+of a method is not a field. The analyzer groups by the declared
 variable and never by its name, so two values with one name stay apart.
 
 A site that names exactly one field of a base contributes that field. A
@@ -50,18 +52,52 @@ author wrote one compare there already. The analyzer counts distinct
 fields, and it reports a base at the number of fields the min setting
 sets. The report sits at the first single-field site of the group.
 
+A report also states the cost of the fix. The anchor of a group is the
+deepest field path that holds every asserted path, and one comparison
+there states every claim of the group. The analyzer counts the
+cmpopts.IgnoreFields names that the comparison needs: a subtree with no
+asserted field costs one name, and a subtree with one asserted field
+pays for each field beside it. A group above the maxignore setting gets
+no report, because the ignore list would state more than the assertions
+it replaces.
+
+A group that compares one field path against the same path of another
+value of the same type pays no such cost. Such a test holds a want
+value already, and the ignore list of its fix names the unstable fields
+alone, which the analyzer cannot predict.
+
+A type with a usable Equal method answers the comparison itself, and no
+option of cmp changes that answer. The analyzer opens such a type at
+the anchor and reports the group only at a cost of zero, which means
+the test names every field. The message of such a group names no
+option.
+
 The analyzer skips a base that a range clause of the function declares.
 Such a base holds a table case, and not a produced value. No want value
 stands beside it.
 
-No comment stops a report. Four things stop one: the opt-in severity of
-the rule, the disable setting, the min setting, and //nolint:antislop
-on the golangci-lint path. The analyzer skips generated files.`
+No comment stops a report. Five things stop one: the opt-in severity of
+the rule, the disable setting, the min setting, the maxignore setting,
+and //nolint:antislop on the golangci-lint path. The analyzer skips
+generated files.`
 
 // DefaultMin is the number of distinct fields a report needs.
 // docs/spec/002-rules.md states the evidence: a checklist of two
 // fields is the most frequent form in the measured codebases.
 const DefaultMin = 2
+
+// DefaultMaxIgnore is the number of cmpopts.IgnoreFields names that the
+// comparison of a report may need. docs/spec/002-rules.md states the
+// evidence: most groups of the measured codebases need five names or
+// fewer, and every group that a reader judged good sits at five names
+// or below.
+const DefaultMaxIgnore = 5
+
+// maxDepth bounds the walk that removes the containers of a type. A
+// type can hold itself through a slice, as "type L []L" does, and the
+// walk of such a type never meets a structure. The cut needs no such
+// bound, because it descends only where an asserted path leads.
+const maxDepth = 12
 
 // testifyPath is the module the equality family comes from. The
 // analyzer resolves this path and never the name of an import.
@@ -76,13 +112,16 @@ const testingPath = "testing"
 // fields.
 const equalMethod = "Equal"
 
-// The two parts of the message. The second part joins the first where
-// cmp.Diff panics on the value. That failure arrives at run time, in a
-// test that passes, and the author cannot guess the option.
+// The three parts of the message. The second part names the option that
+// skips a field the test cannot predict. It stays away where cmp calls
+// an Equal method, because no option of cmp changes such a comparison.
+// The third part joins the message where cmp.Diff panics on the value.
+// That failure arrives at run time, in a test that passes, and the
+// author cannot guess the option.
 const (
 	runMessage = "assertions name %s of %s one at a time; " +
-		"compare the whole value with cmp.Diff against a want value; " +
-		"cmpopts.IgnoreFields skips a field the test cannot predict"
+		"compare %s as a whole with cmp.Diff against a want value"
+	ignoreMessage     = "; cmpopts.IgnoreFields skips a field the test cannot predict"
 	unexportedMessage = "; cmp.Diff panics on the unexported field %s, " +
 		"so the comparison needs cmp.AllowUnexported"
 )
@@ -102,18 +141,20 @@ var equalFamily = map[string]bool{
 }
 
 // Analyzer is the G12 analyzer. Consumers get it through
-// antislop.Analyzers(), and cmd/antislop registers its min flag.
-var Analyzer = New(DefaultMin)
+// antislop.Analyzers(), and cmd/antislop registers its flags.
+var Analyzer = New(DefaultMin, DefaultMaxIgnore)
 
-// New returns an analyzer that reports a base at min distinct fields. A
+// New returns an analyzer that reports a base at min distinct fields,
+// and at a fix that needs maxIgnore ignore names or fewer. A
 // programmatic consumer, such as the golangci-lint plugin, builds one
 // instance for each configuration, because two runs can hold different
 // numbers and the package-level value is shared.
 //
-// The instance carries its own min flag, which writes into the
-// configuration of that instance. The flag is the configuration surface
-// of cmd/antislop and of go vet -vettool, which read no settings file.
-func New(min int) *analysis.Analyzer {
+// The instance carries its own flags, which write into the
+// configuration of that instance. The flags are the configuration
+// surface of cmd/antislop and of go vet -vettool, which read no
+// settings file.
+func New(min, maxIgnore int) *analysis.Analyzer {
 	cfg := &config{}
 	a := &analysis.Analyzer{
 		Name: "fullstructcomp",
@@ -123,13 +164,16 @@ func New(min int) *analysis.Analyzer {
 	}
 	a.Flags.IntVar(&cfg.min, "min", min,
 		"the number of distinct fields of one value that a report needs")
+	a.Flags.IntVar(&cfg.maxIgnore, "maxignore", maxIgnore,
+		"the number of cmpopts.IgnoreFields names the whole value comparison may need")
 
 	return a
 }
 
 // config holds the settings of one analyzer instance.
 type config struct {
-	min int
+	min       int
+	maxIgnore int
 }
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
@@ -179,16 +223,91 @@ func (c *config) reportRuns(pass *analysis.Pass, fn *ast.FuncDecl) {
 		if cases[base] || len(found.fields) < c.min {
 			continue
 		}
-		pass.Reportf(found.first, "%s", message(pass.Pkg, base, found))
+		anchor, at := found.anchor(base)
+		if !c.reports(found, at, cut(at, anchor, found.fields, true)) {
+			continue
+		}
+		pass.Reportf(found.first, "%s", message(pass.Pkg, base, found, anchor, at))
 	}
+}
+
+// reports states the second condition of a report, which reads the cost
+// of the fix. cost is the number of cmpopts.IgnoreFields names that one
+// comparison at the anchor needs.
+//
+// A type with a usable Equal method answers the comparison itself, and
+// no option of cmp changes that answer. The fix states the same claims
+// there only when the test names every field of the type, which is a
+// cost of zero. A roundtrip needs no ignore name that the analyzer can
+// count, so it passes at any other type.
+func (c *config) reports(found *run, at types.Type, cost int) bool {
+	if equalStop(at) {
+		return cost == 0
+	}
+
+	return found.roundtrip >= c.min || cost <= c.maxIgnore
 }
 
 // run holds the fields that assertions of one function name of one
 // base, one field at a time.
+//
+// roundtrip counts the sites that compare one field path of the base
+// against the same path of another value of the same type. A run of
+// such sites carries a want value already, so the cost gate asks
+// nothing of it.
 type run struct {
-	fields map[string]bool
-	first  token.Pos
+	fields    map[string]*fieldPath
+	first     token.Pos
+	roundtrip int
 }
+
+// anchor returns the deepest path that holds every asserted path of the
+// run, and the type at that path. One comparison there states every
+// claim of the run. The empty path names the base itself.
+func (r *run) anchor(base *types.Var) (string, types.Type) {
+	var names []string
+	at := base.Type()
+	first := true
+	for _, path := range r.fields {
+		parent := path.names[:len(path.names)-1]
+		if first {
+			names, first = parent, false
+		} else {
+			names = names[:commonLen(names, parent)]
+		}
+		if len(names) == 0 {
+			at = base.Type()
+
+			continue
+		}
+		at = path.types[len(names)-1]
+	}
+
+	return strings.Join(names, "."), at
+}
+
+// commonLen returns the number of leading names that two paths share.
+func commonLen(a, b []string) int {
+	total := 0
+	for total < len(a) && total < len(b) && a[total] == b[total] {
+		total++
+	}
+
+	return total
+}
+
+// fieldPath is one asserted path under a base. names holds the fields
+// of the path, and types holds the type of each one. A promoted field
+// gives the path of the embedded structure that declares it, so
+// "got.Name" and "got.Embedded.Name" name one field through one path.
+type fieldPath struct {
+	names []string
+	types []types.Type
+}
+
+// key returns the path as one string, which is the identity of a field
+// inside a run.
+func (p *fieldPath) key() string { return strings.Join(p.names, ".") }
 
 // runs holds the run of each base of one function, in the order the
 // bases first appear. The order makes the reports of a function stable,
@@ -203,54 +322,98 @@ type runs struct {
 // names two or more fields of one base contributes nothing: the author
 // compared those fields in one statement already.
 func (r *runs) addSite(info *types.Info, pos token.Pos, operands []ast.Expr) {
-	named := make(map[*types.Var]map[string]bool)
+	named := make(map[*types.Var]map[string]*fieldPath)
 	var order []*types.Var
 	for _, operand := range operands {
-		base, field := baseField(info, operand)
+		base, path := baseField(info, operand)
 		if base == nil {
 			continue
 		}
-		fields, seen := named[base]
+		paths, seen := named[base]
 		if !seen {
-			fields = make(map[string]bool)
-			named[base] = fields
+			paths = make(map[string]*fieldPath)
+			named[base] = paths
 			order = append(order, base)
 		}
-		fields[field] = true
+		paths[path.key()] = path
 	}
 
 	for _, base := range order {
 		if len(named[base]) != 1 {
 			continue
 		}
-		for field := range named[base] {
-			r.add(base, field, pos)
+		for key, path := range named[base] {
+			r.add(base, path, pos, roundtrip(named, base, key))
 		}
 	}
+}
+
+// roundtrip reports whether another base of one site names the same
+// field path of a value of the same type. Such a site compares a
+// produced value against a want value that holds every field of it. The
+// ignore list of the fix then names the unstable fields alone, which
+// the analyzer cannot predict, so the cost gate reads no cost there.
+//
+// Both parts of the definition are necessary. A site that reads a field
+// of an unrelated value, such as an identifier of another record, states
+// no roundtrip, and the fix of it still writes a want value by hand.
+func roundtrip(named map[*types.Var]map[string]*fieldPath, base *types.Var, key string) bool {
+	for other, paths := range named {
+		if other == base || len(paths) != 1 {
+			continue
+		}
+		if _, same := paths[key]; !same {
+			continue
+		}
+		if sameShape(base.Type(), other.Type()) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // add records one field of one base. The position of the first
 // single-field site of a base is the position of its report, and the
 // walk meets the sites in the order of the source.
-func (r *runs) add(base *types.Var, field string, pos token.Pos) {
+func (r *runs) add(base *types.Var, path *fieldPath, pos token.Pos, paired bool) {
 	found, seen := r.byBase[base]
 	if !seen {
-		found = &run{fields: make(map[string]bool), first: pos}
+		found = &run{fields: make(map[string]*fieldPath), first: pos}
 		r.byBase[base] = found
 		r.order = append(r.order, base)
 	}
-	found.fields[field] = true
+	found.fields[path.key()] = path
+	if paired {
+		found.roundtrip++
+	}
 }
 
 // message states the finding and the fix. It names the count, the base,
-// and the two options the fix needs.
-func message(home *types.Package, base *types.Var, found *run) string {
-	text := fmt.Sprintf(runMessage, fieldCount(len(found.fields)), base.Name())
-	if field, holds := unexportedField(base.Type(), types.RelativeTo(home)); holds {
+// the value that one comparison reads, and the two options the fix
+// needs. The type at the anchor answers the option, because the
+// comparison the message asks for reads that type.
+func message(home *types.Package, base *types.Var, found *run, anchor string, at types.Type) string {
+	text := fmt.Sprintf(runMessage, fieldCount(len(found.fields)), base.Name(), whole(base, anchor))
+	if equalStop(at) {
+		return text
+	}
+	text += ignoreMessage
+	if field, holds := unexportedField(at, types.RelativeTo(home)); holds {
 		text += fmt.Sprintf(unexportedMessage, field)
 	}
 
 	return text
+}
+
+// whole names the value that one comparison reads. It is the base, or
+// the field of the base that holds every asserted path.
+func whole(base *types.Var, anchor string) string {
+	if anchor == "" {
+		return base.Name()
+	}
+
+	return base.Name() + "." + anchor
 }
 
 // fieldCount writes a field count with the singular form or the plural
@@ -270,12 +433,12 @@ func fieldCount(fields int) string {
 // The walk stops at a call, because the result of a method is not a
 // field of the receiver. It stops at a root that is not a variable,
 // such as the name of an imported package.
-func baseField(info *types.Info, expr ast.Expr) (*types.Var, string) {
-	var path []string
+func baseField(info *types.Info, expr ast.Expr) (*types.Var, *fieldPath) {
+	var steps []*fieldPath
 	for {
 		switch node := ast.Unparen(expr).(type) {
 		case *ast.SelectorExpr:
-			path = append(path, node.Sel.Name)
+			steps = append(steps, selectorPath(info, node))
 			expr = node.X
 		case *ast.IndexExpr:
 			expr = node.X
@@ -283,16 +446,221 @@ func baseField(info *types.Info, expr ast.Expr) (*types.Var, string) {
 			expr = node.X
 		case *ast.Ident:
 			base, isVar := info.Uses[node].(*types.Var)
-			if !isVar || len(path) == 0 {
-				return nil, ""
+			if !isVar || len(steps) == 0 {
+				return nil, nil
 			}
-			slices.Reverse(path)
+			slices.Reverse(steps)
 
-			return base, strings.Join(path, ".")
+			return base, joinPaths(steps)
 		default:
-			return nil, ""
+			return nil, nil
 		}
 	}
+}
+
+// selectorPath returns the fields that one selector names. A selector
+// of a promoted field names the embedded structures above it as well,
+// and the type checker holds the depth of the field, so the search
+// reads no level below it.
+//
+// A selector that names no field gives its own name. Such a selector
+// stands under the name of a package, and the walk of the chain rejects
+// that root.
+func selectorPath(info *types.Info, sel *ast.SelectorExpr) *fieldPath {
+	selection, holds := info.Selections[sel]
+	if holds && selection.Kind() == types.FieldVal {
+		if path, found := promotedPath(selection.Recv(), selection.Obj(), len(selection.Index())); found {
+			return path
+		}
+	}
+
+	return &fieldPath{names: []string{sel.Sel.Name}, types: []types.Type{info.TypeOf(sel)}}
+}
+
+// promotedPath returns the path of fields from a type down to one
+// field. limit is the depth of the field in the type, so the search
+// ends where the field must sit.
+func promotedPath(t types.Type, field types.Object, limit int) (*fieldPath, bool) {
+	if limit == 0 {
+		return nil, false
+	}
+	for _, candidate := range fieldsOf(t) {
+		if candidate == field {
+			return &fieldPath{
+				names: []string{candidate.Name()},
+				types: []types.Type{candidate.Type()},
+			}, true
+		}
+		if !candidate.Embedded() {
+			continue
+		}
+		deeper, found := promotedPath(candidate.Type(), field, limit-1)
+		if !found {
+			continue
+		}
+
+		return &fieldPath{
+			names: append([]string{candidate.Name()}, deeper.names...),
+			types: append([]types.Type{candidate.Type()}, deeper.types...),
+		}, true
+	}
+
+	return nil, false
+}
+
+// fieldsOf returns the fields that a promoted path passes through. Such
+// a path crosses an embedded structure or a pointer to one. A type with
+// no structure under it carries no field, and a structure can embed
+// such a type.
+func fieldsOf(t types.Type) []*types.Var {
+	if pointer, isPointer := types.Unalias(t).(*types.Pointer); isPointer {
+		t = pointer.Elem()
+	}
+	structure, isStruct := types.Unalias(t).Underlying().(*types.Struct)
+	if !isStruct {
+		return nil
+	}
+
+	return slices.Collect(structure.Fields())
+}
+
+// joinPaths returns the steps of one chain as one path.
+func joinPaths(steps []*fieldPath) *fieldPath {
+	path := &fieldPath{}
+	for _, step := range steps {
+		path.names = append(path.names, step.names...)
+		path.types = append(path.types, step.types...)
+	}
+
+	return path
+}
+
+// cut returns the number of cmpopts.IgnoreFields names that one
+// comparison at a prefix needs. A path the test asserts costs nothing.
+// A subtree that holds no asserted path costs one name, because one
+// name covers the whole of it. A subtree that holds one pays for each
+// field beside it.
+//
+// atAnchor marks the type of the comparison itself. The walk opens that
+// type whatever methods it carries, because the count states the work
+// of a fix that reads every field of it. A field below the anchor keeps
+// the Equal stop of cmp.
+//
+// The walk descends only where an asserted path leads, so the length of
+// that path bounds it.
+func cut(t types.Type, prefix string, paths map[string]*fieldPath, atAnchor bool) int {
+	if _, asserted := paths[prefix]; asserted {
+		return 0
+	}
+	structure := structUnder(t, atAnchor)
+	if structure == nil || !under(paths, prefix) {
+		return 1
+	}
+
+	total := 0
+	for field := range structure.Fields() {
+		total += cut(field.Type(), join(prefix, field.Name()), paths, false)
+	}
+
+	return total
+}
+
+// under reports whether an asserted path sits below a prefix. The empty
+// prefix names the anchor itself, and every path sits below it.
+func under(paths map[string]*fieldPath, prefix string) bool {
+	if prefix == "" {
+		return len(paths) > 0
+	}
+	for path := range paths {
+		if strings.HasPrefix(path, prefix+".") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// join adds one field name to a path.
+func join(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+
+	return prefix + "." + name
+}
+
+// structUnder returns the structure that cmp opens under a type. cmp
+// reads the element of a pointer, a slice, an array and a map, and it
+// stops at a type with a usable Equal method. The result is nil where
+// cmp reads no field, and such a type costs one ignore name.
+//
+// open ignores the Equal method, and the walk of the anchor takes that
+// route. maxDepth bounds the walk, because a type can hold itself
+// through a container and never reach a structure.
+func structUnder(t types.Type, open bool) *types.Struct {
+	for step := 0; step < maxDepth && (open || !hasEqualMethod(t)); step++ {
+		switch node := types.Unalias(t).(type) {
+		case *types.Named:
+			t = node.Underlying()
+		case *types.Struct:
+			return node
+		default:
+			elem, isContainer := containerElem(t)
+			if !isContainer {
+				return nil
+			}
+			t = elem
+		}
+	}
+
+	return nil
+}
+
+// equalStop reports whether cmp calls an Equal method of a type instead
+// of reading the fields of it. cmp reads the element of a container, so
+// the method of the element answers for the container as well. The walk
+// stops at such a type, and the same walk opens it.
+func equalStop(t types.Type) bool {
+	return structUnder(t, false) == nil && structUnder(t, true) != nil
+}
+
+// sameShape reports whether two bases hold values of one type. cmp
+// compares the element of a container, so a pointer, a slice, an array
+// and a map of the type of the base carry the same want value.
+func sameShape(a, b types.Type) bool {
+	return types.Identical(stripped(a), stripped(b))
+}
+
+// stripped removes the containers of a type and returns the type under
+// them.
+func stripped(t types.Type) types.Type {
+	for step := 0; step < maxDepth; step++ {
+		elem, isContainer := containerElem(t)
+		if !isContainer {
+			break
+		}
+		t = elem
+	}
+
+	return t
+}
+
+// containerElem returns the element type of a container.
+func containerElem(t types.Type) (types.Type, bool) {
+	switch node := types.Unalias(t).(type) {
+	case *types.Pointer:
+		return node.Elem(), true
+	case *types.Slice:
+		return node.Elem(), true
+	case *types.Array:
+		return node.Elem(), true
+	case *types.Map:
+		// The walk reads the element and never the key, as the walk of
+		// the unexported fields does.
+		return node.Elem(), true
+	}
+
+	return nil, false
 }
 
 // isEqualCall reports whether a call is an assertion of the equality

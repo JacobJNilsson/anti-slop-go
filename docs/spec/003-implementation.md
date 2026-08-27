@@ -72,11 +72,11 @@ callers never share one.
 read no configuration file. `New` registers the flag of the rule on the
 instance it builds, and the flag writes into the configuration of that
 instance. `-noreflect.allow`, `-noadhoctypeswitch.boundary`,
-`-fullstructcomp.min`, and `-errsemantics.equality` are the flags
-today, and the multichecker registers each one because it registers the
-analyzer. The first two take a comma-separated list, and a repeated
-flag adds patterns. The third takes one number, and the fourth takes a
-boolean.
+`-fullstructcomp.min`, `-fullstructcomp.maxignore`, and
+`-errsemantics.equality` are the flags today, and the multichecker
+registers each one because it registers the analyzer. The first two
+take a comma-separated list, and a repeated flag adds patterns. The
+next two take one number each, and the last takes a boolean.
 
 The settings block is the configuration surface of the plugin.
 golangci-lint gives the block to `New` of the plugin through
@@ -134,6 +134,7 @@ linters:
           reflect-allow:            # G07
             - "example.com/app/internal/codec"
           fullstructcomp-min: 3     # G12: fields before a report
+          fullstructcomp-maxignore: 5   # G12: ignore names a fix may need
           errsemantics-equality: true   # G13
           disable:
             - noerrorassert         # when staticcheck covers it
@@ -145,8 +146,9 @@ linters:
 ```
 
 Every key of the example exists today: `boundary-packages`,
-`reflect-allow`, `fullstructcomp-min`, `errsemantics-equality`,
-`enable`, and `disable`. `nointerfacereturn` (G09), `justifypanic`
+`reflect-allow`, `fullstructcomp-min`, `fullstructcomp-maxignore`,
+`errsemantics-equality`, `enable`, and `disable`.
+`nointerfacereturn` (G09), `justifypanic`
 (G11), `fullstructcomp` (G12), and `errsemantics` (G13) are the opt-in
 rules that `enable` names.
 
@@ -166,6 +168,13 @@ Semantics:
   default of the rule, which is 2. The key therefore takes a pointer in
   the settings structure. The decoder writes zero for an absent key of
   an integer field, and zero is a setting of its own.
+- `fullstructcomp-maxignore`: the number of `cmpopts.IgnoreFields`
+  names that the comparison of a report of G12 may need. G12 counts
+  those names. It reports no group above this number, because the
+  ignore list of such a fix states more than the assertions it
+  replaces. `-fullstructcomp.maxignore` takes the same number on the
+  standalone path. The default is 5, and the key takes a pointer for
+  the reason above: zero is a setting of its own.
 - `errsemantics-equality`: a boolean. G13 reads it, and it adds the
   equality forms of that rule, which are a comparison of an error
   message against a string. The default is false, because a package
@@ -401,8 +410,8 @@ listed here:
    (G11); configuration polish; dogfood on a real project and tune
    false positives before 1.0.
 5. **M5**: opt-in rules `fullstructcomp` (G12), with the
-   `fullstructcomp-min` setting, and `errsemantics` (G13), with the
-   `errsemantics-equality` setting.
+   `fullstructcomp-min` and `fullstructcomp-maxignore` settings, and
+   `errsemantics` (G13), with the `errsemantics-equality` setting.
 
 ## Open questions
 

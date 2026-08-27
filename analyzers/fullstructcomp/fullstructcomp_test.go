@@ -17,18 +17,41 @@ func TestAnalyzer(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), fullstructcomp.Analyzer, "a")
 }
 
+// The cost gate reads the number of cmpopts.IgnoreFields names that one
+// comparison of the whole value needs. Package "gate" holds the classes
+// the gate decides: the group above the setting, the group at an
+// anchor, the roundtrip against a value of the same type, and the
+// lookalike of that roundtrip.
+func TestCostGate(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.Analyzer, "gate")
+}
+
 // The setting states the number of distinct fields a report needs. The
 // min3 fixture holds one function of two fields and one of three, so
 // one run reads both directions of the setting.
 func TestNewTakesTheMinimum(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), fullstructcomp.New(3), "min3")
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.New(3, fullstructcomp.DefaultMaxIgnore), "min3")
 }
 
 // A setting of one reports every spot check, which 002 rejects for a
 // project. The message must still read as a sentence, so the singular
 // form of the count sits here.
 func TestNewTakesTheMinimumOfOne(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), fullstructcomp.New(1), "min1")
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.New(1, fullstructcomp.DefaultMaxIgnore), "min1")
+}
+
+// A maxignore setting of zero reports a group whose fix carries no
+// ignore name at all. The fixture holds one such group and one group
+// that needs a single name.
+func TestNewTakesAMaxIgnoreOfZero(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.New(fullstructcomp.DefaultMin, 0), "ignore0")
+}
+
+// A high maxignore setting gives the report volume of the rule before
+// the gate. The fixture holds a group whose fix needs six names, which
+// the default rejects.
+func TestNewTakesAHighMaxIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.New(fullstructcomp.DefaultMin, 20), "ignorehigh")
 }
 
 // The default is two fields, which 002 records with the evidence for
@@ -40,11 +63,20 @@ func TestDefaultMin(t *testing.T) {
 	}
 }
 
+// The default cost is five ignore names. 002 records the measurement:
+// most groups of the corpora need five names or fewer, and every group
+// that a reader judged good sits at five or below.
+func TestDefaultMaxIgnore(t *testing.T) {
+	if fullstructcomp.DefaultMaxIgnore != 5 {
+		t.Errorf("DefaultMaxIgnore = %d; 002 states five names", fullstructcomp.DefaultMaxIgnore)
+	}
+}
+
 // The flag is the configuration surface of cmd/antislop and of
 // go vet -vettool. It writes into the analyzer instance it sits on, so
 // two instances never share a setting.
 func TestMinFlagConfiguresOneInstance(t *testing.T) {
-	configured := fullstructcomp.New(fullstructcomp.DefaultMin)
+	configured := fullstructcomp.New(fullstructcomp.DefaultMin, fullstructcomp.DefaultMaxIgnore)
 	if err := configured.Flags.Set("min", "3"); err != nil {
 		t.Fatalf("the min flag rejected a number: %v", err)
 	}
@@ -53,7 +85,8 @@ func TestMinFlagConfiguresOneInstance(t *testing.T) {
 	// Another instance holds its own setting. The plugin builds one
 	// instance for each run for this reason: it never writes to the
 	// analyzer value that every consumer of the module shares.
-	if got := fullstructcomp.New(fullstructcomp.DefaultMin).Flags.Lookup("min").Value.String(); got != "2" {
+	clean := fullstructcomp.New(fullstructcomp.DefaultMin, fullstructcomp.DefaultMaxIgnore)
+	if got := clean.Flags.Lookup("min").Value.String(); got != "2" {
 		t.Errorf("a new analyzer reads the setting %q of another instance", got)
 	}
 	if got := fullstructcomp.Analyzer.Flags.Lookup("min").Value.String(); got != "2" {
@@ -61,10 +94,26 @@ func TestMinFlagConfiguresOneInstance(t *testing.T) {
 	}
 }
 
-// The package-level analyzer carries the flag, because cmd/antislop
+// The maxignore flag carries the cost gate on the same path, and it
+// holds the same promise about one instance.
+func TestMaxIgnoreFlagConfiguresOneInstance(t *testing.T) {
+	configured := fullstructcomp.New(fullstructcomp.DefaultMin, fullstructcomp.DefaultMaxIgnore)
+	if err := configured.Flags.Set("maxignore", "20"); err != nil {
+		t.Fatalf("the maxignore flag rejected a number: %v", err)
+	}
+	analysistest.Run(t, analysistest.TestData(), configured, "ignorehigh")
+
+	if got := fullstructcomp.Analyzer.Flags.Lookup("maxignore").Value.String(); got != "5" {
+		t.Errorf("the analyzer of the module reads the setting %q of another instance", got)
+	}
+}
+
+// The package-level analyzer carries both flags, because cmd/antislop
 // registers the analyzers of the module through antislop.Analyzers().
-func TestAnalyzerCarriesTheFlag(t *testing.T) {
-	if fullstructcomp.Analyzer.Flags.Lookup("min") == nil {
-		t.Error("the analyzer of the module registers no min flag")
+func TestAnalyzerCarriesTheFlags(t *testing.T) {
+	for _, flag := range []string{"min", "maxignore"} {
+		if fullstructcomp.Analyzer.Flags.Lookup(flag) == nil {
+			t.Errorf("the analyzer of the module registers no %s flag", flag)
+		}
 	}
 }

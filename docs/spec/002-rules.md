@@ -1522,13 +1522,28 @@ func TestCreate(t *testing.T) {
 }
 ```
 
-The `IgnoreFields` entry carries the field that the test cannot
-predict. A measurement of five Go codebases gives how often the fix
-needs such an entry. In each one, a reported group of four fields or
-more sits on a type that holds 9 to 11 fields, and the test asserts 5
-of them. In 63 to 100 percent of the groups, the test asserts fewer
-fields than the type holds. So the fix almost always needs one such
-entry. Every message of this rule names the option.
+The `IgnoreFields` call takes one name for each field that the test
+cannot predict, and almost every fix needs one name. The rule counts
+the names that one comparison would need, and that count decides a
+report. A scan with the analyzer over the standard library and over
+`golang.org/x/tools` v0.49.0 shows how the counts spread. The table
+counts every group that the rule finds at two fields, before the gate
+stops any of them.
+
+| ignore names | standard library | `x/tools` |
+| --- | --- | --- |
+| 0 | 34 | 2 |
+| 1 to 2 | 22 | 3 |
+| 3 to 5 | 25 | 9 |
+| 6 to 10 | 17 | 1 |
+| 11 to 20 | 16 | 0 |
+| above 20 | 20 | 8 |
+
+81 of the 134 standard library groups need 5 names or fewer. Of the
+rest, 20 need above 20 names. The roundtrip branch keeps 4 more groups,
+which gives the 85 that the default reports. Every message of this rule
+names the option, unless cmp answers the comparison with an `Equal`
+method of the value. No option of cmp changes such a comparison.
 
 ### What the rule reads
 
@@ -1575,17 +1590,19 @@ field is the whole path under the base. So `got.A.B` names the field
 variable, and never by its name. Two values of one name, in two subtest
 closures, therefore stay apart.
 
-The path is text, and it counts a promoted field twice. `got.Name` and
-`got.Embedded.Name` name one field of the value through two paths, and
-the rule reads two fields. A test that writes both paths is rare, and
-the count is high by one there.
+The rule resolves each step of the chain through the selections of the
+type checker. A promoted field then gives the path of the embedded
+structure that declares it. `got.Name` and `got.Embedded.Name` name one
+field through one path, and the rule reads one field. The paragraph
+"The cut" below needs the real path, because that count walks the type
+of the value downwards.
 
 **The counting.** A site that names exactly one field of a base
 contributes that field. A site that names two or more fields of one
 base contributes nothing, because the author compared those fields in
 one statement already. The rule counts distinct fields, so one field
 asserted twice is one field. It reports a base when the count reaches
-the number that the setting sets.
+the number that the `min` setting sets.
 
 That measure matters. A count of field mentions, instead of
 single-field sites, reports 37 standard library functions at four
@@ -1595,7 +1612,97 @@ a combined condition that needs no change.
 A table-driven loop needs no rule of its own. The syntax tree holds one
 site inside the body of the loop, so a table of 40 cases counts once.
 
-### The setting
+The run of one base is a group, and one group gives one finding.
+
+**The cost of the fix.** A count of fields is not enough. Two
+assertions that reach one end field inside two large subtrees give a
+fix whose ignore list states far more than the test does. An end field
+is a field with no structure under it. The rule reads a
+second condition for that reason, and it reports a base only when both
+of these hold:
+
+1. The count of distinct fields reaches the `min` setting.
+2. The group is a roundtrip, or the fix needs no more ignore names than
+   the `maxignore` setting allows.
+
+A value that answers a comparison with an `Equal` method takes another
+route, and the paragraph "The type at the anchor" states it.
+
+**The anchor.** The anchor of a group is the deepest field path that
+holds every asserted path. One comparison there states every claim of
+the group, so the message names the anchor, as in
+`compare got.Pagination as a whole`. The anchor is the base itself when
+the assertions sit in two subtrees or more. A subtree anchor is rare in
+the two public corpora: 3 of the 85 kept groups of the standard library
+carry one, and none of `x/tools` does. The Measurement section
+describes a probe of a first design of the gate. That probe met the
+form more often in the private service, where a checklist reads one
+part of a large response.
+
+**The cut.** The cut counts the `cmpopts.IgnoreFields` names that one
+comparison at the anchor needs. It reads the type from the anchor
+downwards:
+
+- A path that the test asserts costs nothing.
+- A subtree that holds no asserted path costs one name, because one
+  name covers the whole of it.
+- A subtree that holds one asserted path pays for each field beside it.
+
+The number that the cut gives is the cost of the group.
+
+The walk follows `cmp`. It opens the structure under a pointer, a
+slice, an array and a map. It stops at a type with an `Equal` method
+that cmp can call. Such a type costs one name, because cmp calls the
+method and reads no field under it. An unexported field, an interface field
+and a type parameter each cost one name as well. The walk descends only where an
+asserted path leads, so the length of that path bounds it. The rule
+also walks a type to remove its containers, and that walk carries a
+bound. A type can hold itself, as `type L []L` does, and such a type
+never reaches a structure. The bound is 12 steps, and it is a guard. An
+ordinary type reaches its structure in two or three steps, so the
+number decides nothing.
+
+**The type at the anchor.** The `Equal` stop holds below the anchor and
+not at it. cmp calls the method of the value under comparison and reads
+no field of it, so `cmpopts.IgnoreFields` skips nothing there. The rule
+therefore opens the type at the anchor, whatever methods it carries,
+and it reports such a group only at a cost of zero. A cost of zero
+means the test names every field, and one plain `cmp.Diff` against a
+want value states the same claims. The message of such a group names no
+option, because no option applies. The route holds for a roundtrip as
+well, and for the same reason.
+
+The standard library holds two such groups, and both stay silent. Both
+sit in `crypto/x509`. One asserts 2 fields of an `rsa.PrivateKey`,
+which costs 7 names, and one asserts 10 fields of a `Certificate`,
+which costs 62.
+
+**The roundtrip.** A group is a roundtrip when `min` sites or more pair
+the base with one other base. Each such site compares one field path of
+the base against the same path of the other base. The other base must
+hold a value of the same type. The rule removes a pointer, a slice, an
+array and a map from both types before it compares them. Such a test
+holds a want value already. The ignore list of its fix covers the
+unstable fields alone, which the analyzer cannot predict, so the cost
+gate reads no cost there.
+
+The other base of such a site must name exactly one field itself. A
+site that reads two fields of the other value states two claims about
+it. The rule counts no field of that base there, so it reads no
+roundtrip either. The roundtrip branch keeps 4 groups of the standard
+library and 1 of `x/tools` that the cost alone drops.
+
+Both parts of that definition are necessary, and the probe of the first
+design measured that. 100 groups of the private service read a field of
+another value, and only 17 of them read a value of the same type. The
+other 83 compare a field of an unrelated record, such as
+`require.Equal(t, order.ID, line.OrderID)`. No want value of the right
+type stands there, so the fix writes one by hand and pays for it. Only
+34 percent of the same 100 groups pair a path with the same path. The
+standard library gives 72 percent, because its compare helpers walk the
+same paths on both sides.
+
+### The settings
 
 `-fullstructcomp.min` sets the number of distinct fields that a
 report needs. The `fullstructcomp-min` setting of the plugin takes the
@@ -1635,6 +1742,58 @@ one of those assertions is correct as it stands.
 claim of its test. A diff of the whole response would need a longer
 ignore list than the assertion it replaces.
 
+`-fullstructcomp.maxignore` sets the number of `cmpopts.IgnoreFields`
+names that the comparison of a report may need. The
+`fullstructcomp-maxignore` setting of the plugin takes the same number.
+The default is **5**.
+
+The number comes from a reading of the groups, and the table of the
+section above shows the spread. Every group that a reader judged good
+sits at 5 names or below. Three of them stand here. A three-field type
+with two asserted fields costs 1 name. A response of 79 end fields with
+four asserted pagination fields costs 2 names. A create-and-echo test
+costs 5 names.
+
+The group of the private service that gave the gate its shape needs 57
+names for its 2 assertions. It is the counter-example of the class.
+
+Keep rates of the two public corpora, from a scan with the analyzer:
+
+| gate | standard library | `x/tools` |
+| --- | --- | --- |
+| no gate | 134 | 23 |
+| 5 names | 85 | 15 |
+| 5 names or the field count, whichever is higher | 85 | 15 |
+| 8 names | 93 | 16 |
+| one name for each asserted field | 63 | 7 |
+
+The plain cap and the higher-of-two form keep the same groups in both
+corpora. The plain cap is therefore the choice, because a reader
+predicts one number more easily than two.
+
+A ratio of asserted fields to the end fields of the type was the first
+candidate, and the probe of the first design rejected it. The
+counter-example asserts 2.2 percent of its end fields, which is 2 of
+90. One roundtrip that a reader judged good asserts 6.8 percent, which
+is 3 of 44. That roundtrip stores a value in the private service, reads
+it back, and asserts three fields of the result.
+
+Any global ratio that silences the first and keeps the second sits in
+that window of 4 points. One added field moves a type across it. Inside
+the window the filter is also blunt. At 5 percent it drops 42 groups of
+the private service for no stated reason. At 7 percent it drops the
+good roundtrip. A ratio for each subtree gives the same window, because
+the counter-example asserts 2.5 percent of each of its two subtrees.
+The setting is called `maxignore` for that reason. It counts names, and
+it states no fraction.
+
+A value of 0 reports a group whose fix carries no ignore name at all,
+which means the assertions name every field of the value. A high value
+gives the report volume of the rule before the gate. A high value still
+keeps one class silent, which the paragraph "The type at the anchor"
+states. No number reaches that class, because no ignore name reaches it
+either.
+
 ### What the rule leaves alone
 
 - **A base that a range clause of the function fills.** Such a base
@@ -1644,6 +1803,31 @@ ignore list than the assertion it replaces.
   and 1 of 41 groups of the private service. A clause with `:=` and a
   clause with `=` both fill the variable, so both stop the reports of
   it.
+- **A group whose fix needs more ignore names than the setting
+  allows.** The class is two assertions that reach one end field inside
+  two large subtrees. One such group of the private service asserts one
+  total of each of two subtrees of a value of 90 end fields. The two
+  assertions name one field pair through two paths. One comparison of
+  the whole value needs 57 ignore names, which is 28 names for each
+  assertion. The rule states nothing there, because the fix it knows is
+  worse than the test it reads. The checklist needs no other advice, so
+  the rule gains no message for the class.
+- **A checklist on a type that carries its own `Equal` method**, where
+  the assertions leave a field out. cmp calls the method and reads no
+  field of the value, so the ignore list is not available. The test
+  names a field that the rewrite cannot skip, and the rule has no fix
+  to offer. The same checklist reports when it names every field,
+  because one plain `cmp.Diff` then states the same claims.
+- **Two `cmp.Diff` calls that read one base.** A merge of the two is
+  not the advice. The private service holds 79 such function and base
+  pairs, and the other corpora hold none. 55 of the 79 compare the same
+  value before and after an action, which is a checkpoint and no
+  duplicate. 6 more compare a "before" half and an "after" half against
+  two different want values, which one comparison cannot state. Those
+  two shapes cover the clear cases, and the other 18 pairs hold neither
+  of them. A merge is correct only where the cost at the common parent
+  is small. The shape that suggested the report has a cost of 57
+  there.
 - **A site that names two fields of one base**, such as
   `if a.X != w.X || a.Y != w.Y`. That statement is one compare.
 - **A call outside the equality family.** `True`, `Len`, `Nil`,
@@ -1693,7 +1877,9 @@ is no exemption for such a type. The message carries one more sentence
 for it. `cmp.Diff` panics at run time, and not at build time, on an
 unexported field anywhere in the type graph. The author needs
 `cmp.AllowUnexported` there, and would not guess it. Without that
-sentence the author writes a panic into a test that passes.
+sentence the author writes a panic into a test that passes. The walk
+starts at the anchor, because the comparison that the message asks for
+reads the type there.
 
 The private service settles the question. Not one of its 75 measured
 groups needs the option, and not one of its 651 asserted fields is
@@ -1737,10 +1923,10 @@ state, and the author reads the panic for the rest.
 **No comment stops a report.** `SAFETY:`, `PANICS:`, and `CONTRACT:`
 state an invariant, a reason, or an API that the analyzer cannot read.
 Here there is no invariant to state. There is only a judgement about
-which form of a test reads better, so no marker fits. Four things stop
+which form of a test reads better, so no marker fits. Five things stop
 a report: the opt-in severity, the `disable` setting, the `min`
-setting, and `//nolint:antislop` on the golangci-lint path. 003 states
-all four.
+setting, the `maxignore` setting, and `//nolint:antislop` on the
+golangci-lint path. 003 states all five.
 
 ### Why the rule is opt-in
 
@@ -1764,13 +1950,41 @@ value". The other is "assert five separate properties of a value that
 no expectation describes". That limit is a property of syntax, and not
 a fault of the number.
 
-The report volume is low at every number. At the default of 2, the rule
-reports 134 findings in the standard library, in 110 test functions.
-That is 1.0 percent of its 11169 test functions. The private service
-reports 156 findings in 108 of its 838 test functions, which is 12.9
-percent. At 4 the two numbers are 0.13 percent and 4.2 percent. A
-testify codebase writes checklists at every number, and the standard
+The report volume is low at every number. At the default settings the
+rule reports 85 findings in the standard library and 15 in `x/tools`.
+The private service reports 66, in the scan that the Measurement
+section dates. Without the cost gate the counts are 134, 23 and 156.
+Those 134 sit in 110 of the 11169 test
+functions of the standard library, which is 1.0 percent. The 156 sit in
+108 of the 838 test functions of the service, which is 12.9 percent. At
+a minimum of 4 fields the two shares are 0.13 percent and 4.2 percent.
+A testify codebase writes checklists at every number, and the standard
 library does not.
+
+The cost gate carries limits of its own, and they belong here.
+
+- The gate decides a group near the cap with one number, and it is
+  sometimes wrong in both directions. Two fields of a value of 55 end
+  fields sit at 4 or 5 names, which is inside the cap. A reader can
+  judge either way.
+- A report disappears when a type gains a field and the cost of the fix
+  grows past the cap. The number is correct, and the change surprises
+  the author.
+- The roundtrip branch pays no cost at all. It trusts that a want value
+  of the type of the base exists. The fix of such a test can still need
+  many ignore names for the fields that a server sets.
+- The roundtrip branch also keeps the checkpoint alive. A test that
+  compares two snapshots of one type, one before an action and one
+  after it, reads as a roundtrip to this rule. The 4 standard library
+  groups that the branch keeps are two such pairs: two connection states
+  in `crypto/tls`, and two memory statistics values in `runtime`. Each
+  pair reports both of its bases, which makes 4 groups. The advice
+  inverts the intent of such a test, which asks about the difference
+  between the two snapshots, and not about their equality.
+- The gate does not target the mid-flow checkpoint, which is the known
+  false report of the standard library. Roughly half of the kept
+  standard library reports are still wrong. The `min` setting stays the
+  first escape for such a project.
 
 The fix also takes a dependency. `github.com/google/go-cmp` is a direct
 requirement of the private service and of `golang.org/x/tools`. The
@@ -1817,12 +2031,31 @@ of one base only, so two results of one call stay apart.
 ### Measurement
 
 A scan of the whole standard library, tests included, reports 134
-findings at two fields and 20 at four. The scan ran the standalone
-binary with `-fullstructcomp` over `./...` in `GOROOT/src` with Go
-1.26.2 on darwin/arm64.
+findings at two fields and 20 at four, with no cost gate. The scan ran
+the standalone binary with `-fullstructcomp` over `./...` in
+`GOROOT/src` with Go 1.26.2 on darwin/arm64.
 
 A scan of the private service reports 156 findings at two fields and 40
-at four. The two scans hold the separation that the severity rests on.
+at four, with no cost gate. The two scans hold the separation that the
+severity rests on.
+
+A scan with the cost gate at the default of 5 names reports 85 findings
+in the standard library, which is 49 fewer. The same scan reports 15 of
+the 23 findings of `golang.org/x/tools` v0.49.0. A scan of the private
+service reports 66 of its 156. The exemption for a type with an `Equal`
+method takes groups away and adds none. At the default it takes none,
+because the cost gate already stops the two `crypto/x509` groups above.
+It takes both at a high `maxignore`.
+
+A first design of the gate came from a separate probe, which predicted
+86 for the standard library. The probe built a field path from the text
+of a selector, so it resolved a promoted field wrongly. Three groups
+differ between the probe and the analyzer, and all three hold a
+promoted field. The analyzer alone keeps one group of `compress/gzip`,
+where the resolved paths sit under one embedded header and cost 3
+names. The probe alone keeps two groups of `archive/zip`, where the
+resolved paths cost 15 and 11 names. The analyzer is the reference
+here, because it is the code that runs.
 
 The `cmp.AllowUnexported` sentence follows the codebase in the same
 way. 76 of the 134 standard library findings carry it. None of the 156
