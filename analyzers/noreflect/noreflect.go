@@ -44,6 +44,12 @@ line the author must change. The rule reads the objects the file uses,
 so a renamed import and a dot import follow the same test. A blank
 import uses no object, so a test file with one stays clean.
 
+A test file is a file whose name ends in "_test.go". Every file of a
+package that the testpackages flag names is a test file as well. The golangci-lint plugin
+takes the same patterns in the test-packages setting. A package that
+serves tests and carries no "_test.go" name, such as a shared suite,
+needs that entry.
+
 No comment stops a report. The fix is a boundary package that holds the
 reflection, and the allow pattern that names it. The rule skips
 generated files.`
@@ -71,19 +77,21 @@ const (
 const allowNames = "reflect-allow (-noreflect.allow outside golangci-lint)"
 
 // Analyzer is the G07 analyzer. Consumers get it through
-// antislop.Analyzers(), and cmd/antislop registers its allow flag.
-var Analyzer = New(nil)
+// antislop.Analyzers(), and cmd/antislop registers its flags.
+var Analyzer = New(nil, nil)
 
-// New returns an analyzer that allows the packages the patterns name.
-// A programmatic consumer, such as the golangci-lint plugin, builds one
-// instance for each configuration, because two runs can hold different
-// patterns and the package-level value is shared.
+// New returns an analyzer that allows the packages the allow patterns
+// name, and reads the packages the testPackages patterns name as test
+// code. A programmatic consumer, such as the golangci-lint plugin,
+// builds one instance for each configuration, because two runs can hold
+// different patterns and the package-level value is shared.
 //
-// The instance carries its own allow flag, which writes into the
-// configuration of that instance. The flag is the configuration surface
-// of cmd/antislop and of go vet -vettool, which read no settings file.
-func New(allow []string) *analysis.Analyzer {
-	cfg := &config{allow: allow}
+// The instance carries its own flags, which write into the
+// configuration of that instance. The flags are the configuration
+// surface of cmd/antislop and of go vet -vettool, which read no
+// settings file.
+func New(allow, testPackages []string) *analysis.Analyzer {
+	cfg := &config{allow: allow, testPackages: testPackages}
 	a := &analysis.Analyzer{
 		Name: "noreflect",
 		Doc:  doc,
@@ -92,29 +100,16 @@ func New(allow []string) *analysis.Analyzer {
 	}
 	a.Flags.Var(&cfg.allow, "allow",
 		"package path patterns that may import reflect, separated by commas; a repeated flag adds patterns")
+	a.Flags.Var(&cfg.testPackages, "testpackages",
+		"package path patterns whose files count as test files, separated by commas; a repeated flag adds patterns")
+
 	return a
 }
 
 // config holds the settings of one analyzer instance.
 type config struct {
-	allow patternList
-}
-
-// patternList is the value of the allow flag. Each occurrence of the
-// flag adds the patterns of a comma-separated list, so a caller writes
-// one flag or several. No import path holds a comma, so the separator
-// takes no escape.
-type patternList []string
-
-// String returns the patterns as the flag reads them. The flag package
-// prints this text in the usage message.
-func (p *patternList) String() string { return strings.Join(*p, ",") }
-
-// Set adds the patterns of one occurrence of the flag. It rejects
-// nothing: a pattern that matches no package allows no package.
-func (p *patternList) Set(value string) error {
-	*p = append(*p, strings.Split(value, ",")...)
-	return nil
+	allow        pathmatch.List
+	testPackages pathmatch.List
 }
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
@@ -124,6 +119,7 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 	}
 
 	generated := signature.GeneratedFiles(pass)
+	testFile := signature.TestFiles(pass, c.testPackages)
 
 	// tests holds the test files that import reflect. A production file
 	// reports here, at each specification of the import.
@@ -136,7 +132,7 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 		if len(specs) == 0 {
 			continue
 		}
-		if signature.IsTestFile(pass.Fset.File(file.FileStart)) {
+		if testFile(file.FileStart) {
 			tests = append(tests, file)
 			continue
 		}

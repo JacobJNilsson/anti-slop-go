@@ -1,6 +1,8 @@
 package pathmatch_test
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/JacobJNilsson/anti-slop-go/internal/pathmatch"
@@ -91,5 +93,30 @@ func TestAny(t *testing.T) {
 				t.Errorf("Any(%v, %q) = %v, want %v", tt.patterns, tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestList drives the flag value that every package-pattern flag
+// takes. A repeated flag adds patterns, and one occurrence may hold a
+// comma-separated list.
+func TestList(t *testing.T) {
+	var list pathmatch.List
+	if got := list.String(); got != "" {
+		t.Errorf("a new list reads back as %q; want the empty text", got)
+	}
+
+	if err := list.Set("example.com/app/...,.../internal/wire"); err != nil {
+		t.Fatalf("the list rejected a comma-separated value: %v", err)
+	}
+	if err := list.Set("other.com/lib"); err != nil {
+		t.Fatalf("the list rejected a second occurrence: %v", err)
+	}
+
+	want := []string{"example.com/app/...", ".../internal/wire", "other.com/lib"}
+	if !slices.Equal(list, want) {
+		t.Errorf("list = %v; want %v", list, want)
+	}
+	if got := list.String(); got != strings.Join(want, ",") {
+		t.Errorf("the list reads back as %q; want %q", got, strings.Join(want, ","))
 	}
 }

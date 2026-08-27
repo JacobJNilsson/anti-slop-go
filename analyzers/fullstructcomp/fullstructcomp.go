@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/JacobJNilsson/anti-slop-go/internal/pathmatch"
 	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
@@ -25,8 +26,12 @@ field. Such a test states one claim for each field, and no claim about
 the rest. One comparison of the whole value against a want value states
 the whole expectation. It reports every wrong field at once.
 
-The analyzer reads test files, which are the files whose name ends in
-"_test.go". It reads one function declaration at a time. A function
+The analyzer reads test files. A test file is a file whose name ends
+in "_test.go". Every file of a package that the testpackages flag names
+is a test file as well. The golangci-lint plugin takes the same patterns in the
+test-packages setting. A package that serves tests and carries no
+"_test.go" name, such as a shared suite, needs that entry. The
+analyzer reads one function declaration at a time. A function
 literal inside a declaration belongs to that declaration, because a
 subtest closure is the same test.
 
@@ -140,22 +145,25 @@ var equalFamily = map[string]bool{
 	"Exactlyf":     true,
 }
 
-// Analyzer is the G12 analyzer. Consumers get it through
-// antislop.Analyzers(), and cmd/antislop registers its flags.
-var Analyzer = New(DefaultMin, DefaultMaxIgnore)
+// Analyzer is the G12 analyzer. The rule is opt-in, so the
+// golangci-lint plugin runs it only when the enable setting names it.
+// Consumers get it through antislop.Analyzers(), and cmd/antislop
+// registers its flags.
+var Analyzer = New(DefaultMin, DefaultMaxIgnore, nil)
 
 // New returns an analyzer that reports a base at min distinct fields,
-// and at a fix that needs maxIgnore ignore names or fewer. A
-// programmatic consumer, such as the golangci-lint plugin, builds one
-// instance for each configuration, because two runs can hold different
-// numbers and the package-level value is shared.
+// and at a fix that needs maxIgnore ignore names or fewer. It reads the
+// packages the testPackages patterns name as test code. A programmatic
+// consumer, such as the golangci-lint plugin, builds one instance for
+// each configuration, because two runs can hold different settings and
+// the package-level value is shared.
 //
 // The instance carries its own flags, which write into the
 // configuration of that instance. The flags are the configuration
 // surface of cmd/antislop and of go vet -vettool, which read no
 // settings file.
-func New(min, maxIgnore int) *analysis.Analyzer {
-	cfg := &config{}
+func New(min, maxIgnore int, testPackages []string) *analysis.Analyzer {
+	cfg := &config{testPackages: testPackages}
 	a := &analysis.Analyzer{
 		Name: "fullstructcomp",
 		Doc:  doc,
@@ -166,22 +174,26 @@ func New(min, maxIgnore int) *analysis.Analyzer {
 		"the number of distinct fields of one value that a report needs")
 	a.Flags.IntVar(&cfg.maxIgnore, "maxignore", maxIgnore,
 		"the number of cmpopts.IgnoreFields names the whole value comparison may need")
+	a.Flags.Var(&cfg.testPackages, "testpackages",
+		"package path patterns whose files count as test files, separated by commas; a repeated flag adds patterns")
 
 	return a
 }
 
 // config holds the settings of one analyzer instance.
 type config struct {
-	min       int
-	maxIgnore int
+	min          int
+	maxIgnore    int
+	testPackages pathmatch.List
 }
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
 func (c *config) run(pass *analysis.Pass) (any, error) {
 	generated := signature.GeneratedFiles(pass)
+	testFile := signature.TestFiles(pass, c.testPackages)
 
 	for _, file := range pass.Files {
-		if !signature.IsTestFile(pass.Fset.File(file.FileStart)) || generated(file.FileStart) {
+		if !testFile(file.FileStart) || generated(file.FileStart) {
 			continue
 		}
 		for _, decl := range file.Decls {

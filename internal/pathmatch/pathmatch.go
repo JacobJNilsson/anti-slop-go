@@ -24,6 +24,28 @@ import (
 	"strings"
 )
 
+// List is the flag value of a setting that names packages. Each
+// occurrence of the flag adds the patterns of a comma-separated list,
+// so a caller writes one flag or several. No import path holds a
+// comma, so the separator takes no escape.
+//
+// Seven flags of the module take package patterns, and one
+// implementation serves them all. No two flags read one list
+// differently.
+type List []string
+
+// String returns the patterns as the flag reads them. The flag package
+// prints this text in the usage message.
+func (l *List) String() string { return strings.Join(*l, ",") }
+
+// Set adds the patterns of one occurrence of the flag. It rejects
+// nothing: a pattern that matches no package changes no report.
+func (l *List) Set(value string) error {
+	*l = append(*l, strings.Split(value, ",")...)
+
+	return nil
+}
+
 // Any reports whether path matches one of the patterns. An empty list
 // matches no package, so a setting that names no pattern allows
 // nothing.

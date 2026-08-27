@@ -263,3 +263,66 @@ func TestIsTestFile(t *testing.T) {
 		})
 	}
 }
+
+// The wider test-file test answers for a whole package. A project
+// names a package that serves tests, and every file of it then counts
+// as test code. 002 states which packages count, and five rules read
+// it.
+func TestTestFiles(t *testing.T) {
+	patterns := []string{"example.com/app/internal/suite"}
+
+	tests := []struct {
+		name     string
+		path     string
+		file     string
+		patterns []string
+		want     bool
+	}{
+		{"a test file of a package no pattern names", "example.com/app", "a_test.go", patterns, true},
+		{"a plain file of a package no pattern names", "example.com/app", "a.go", patterns, false},
+		{"a plain file of a package a pattern names", "example.com/app/internal/suite", "a.go", patterns, true},
+		{"a test file of a package a pattern names", "example.com/app/internal/suite", "a_test.go", patterns, true},
+		{"a plain file of the external test package", "example.com/app/internal/suite_test", "a.go", patterns, true},
+		{"a plain file with no pattern at all", "example.com/app/internal/suite", "a.go", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file := parse(t, fset, tt.file, "package p\n")
+			pass := &analysis.Pass{
+				Fset:  fset,
+				Files: []*ast.File{file},
+				Pkg:   types.NewPackage(tt.path, "p"),
+			}
+
+			if got := signature.TestFiles(pass, tt.patterns)(file.Pos()); got != tt.want {
+				t.Errorf("TestFiles(%q)(%q) = %v, want %v", tt.path, tt.file, got, tt.want)
+			}
+		})
+	}
+}
+
+// IsTestPackage answers for a path that no pass holds. Rule G08 asks
+// the question about the package that declares a variable.
+func TestIsTestPackage(t *testing.T) {
+	patterns := []string{".../internal/suite/..."}
+
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"example.com/app/internal/suite", true},
+		{"example.com/app/internal/suite/fake", true},
+		{"example.com/app/internal/suite_test", true},
+		{"example.com/app/internal/store", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			if got := signature.IsTestPackage(patterns, tt.path); got != tt.want {
+				t.Errorf("IsTestPackage(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}

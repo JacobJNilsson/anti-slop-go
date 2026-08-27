@@ -113,6 +113,8 @@ linters:
           fullstructcomp-min: 3
           fullstructcomp-maxignore: 5
           errsemantics-equality: true
+          test-packages:
+            - example.com/app/internal/suite
           enable:
             - noanyparam
             - nointerfacereturn
@@ -123,7 +125,7 @@ linters:
             - nountypedmap
 ```
 
-Eleven points about this file:
+Twelve points about this file:
 
 - `type: module` is necessary. Without it, golangci-lint looks for a
   shared object file.
@@ -143,7 +145,7 @@ Eleven points about this file:
   stops the run, because `enable` would do nothing for it.
 - The standalone binary and `go vet -vettool` read none of this file.
   The section "A first run" states what they read instead.
-- Two settings name packages by path pattern. A pattern matches the
+- Three settings name packages by path pattern. A pattern matches the
   whole import path: `*` holds inside one segment, `...` crosses a
   slash, and a pattern that ends in `/...` names the package above it
   as well. The standalone binary takes the same patterns in a flag, as
@@ -174,6 +176,18 @@ Eleven points about this file:
   `EqualError` assertion of testify. The default is false, because a
   package that tests its own message text writes that form. The
   standalone flag is `-errsemantics.equality`.
+- `test-packages` names the packages that serve tests and hold no file
+  whose name ends in `_test.go`. A shared suite that a `TestMain`
+  function starts is such a package. Five rules must decide whether a
+  file is a test file, and this one key answers for all five. In a
+  named package, `noreflect` (G07) gives the `reflect.DeepEqual`
+  allowance of a test file. `nomonkeypatch` (G08) reads the assignments
+  as test code, and `justifypanic` (G11) asks for no `PANICS:` comment.
+  `fullstructcomp` (G12) and `errsemantics` (G13) read no such package
+  today, so an entry adds findings for those two. The standalone flags
+  are `-noreflect.testpackages`, `-nomonkeypatch.testpackages`,
+  `-justifypanic.testpackages`, `-fullstructcomp.testpackages`, and
+  `-errsemantics.testpackages`.
 
 Run the new binary with `./custom-gcl run ./...`.
 
