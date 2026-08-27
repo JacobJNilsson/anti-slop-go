@@ -76,6 +76,13 @@ type Settings struct {
 	// an integer field, and zero is a setting of its own.
 	FullStructCompMin *int `json:"fullstructcomp-min"`
 
+	// FullStructCompMaxIgnore states the number of cmpopts.IgnoreFields
+	// names that the comparison of a report of rule G12 may need. The
+	// key takes an integer, and it is a pointer for the same reason the
+	// key above is: zero is a setting of its own, and it reports a group
+	// whose fix carries no ignore name at all.
+	FullStructCompMaxIgnore *int `json:"fullstructcomp-maxignore"`
+
 	// Equality turns on the equality forms of rule G13. Such a form
 	// compares the message of an error against a string. A package
 	// writes that form about its own messages, and the Go wiki page
@@ -146,7 +153,7 @@ func (p *plugin) configured() []*analysis.Analyzer {
 		case noreflect.Analyzer.Name:
 			all[i] = noreflect.New(p.settings.ReflectAllow)
 		case fullstructcomp.Analyzer.Name:
-			all[i] = fullstructcomp.New(p.minFields())
+			all[i] = fullstructcomp.New(p.minFields(), p.maxIgnoreNames())
 		case errsemantics.Analyzer.Name:
 			all[i] = errsemantics.New(p.settings.Equality)
 		}
@@ -163,6 +170,16 @@ func (p *plugin) minFields() int {
 	}
 
 	return *p.settings.FullStructCompMin
+}
+
+// maxIgnoreNames returns the cost gate of rule G12. A configuration
+// that names no number gets the default of the rule.
+func (p *plugin) maxIgnoreNames() int {
+	if p.settings.FullStructCompMaxIgnore == nil {
+		return fullstructcomp.DefaultMaxIgnore
+	}
+
+	return *p.settings.FullStructCompMaxIgnore
 }
 
 // GetLoadMode tells golangci-lint to give the analyzers full type

@@ -485,10 +485,11 @@ func TestBuildAnalyzersGivesErrsemanticsItsSetting(t *testing.T) {
 // shared one.
 func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 	built, err := build(t, map[string]any{
-		"reflect-allow":         []any{"allowed"},
-		"boundary-packages":     []any{"boundary"},
-		"fullstructcomp-min":    3,
-		"errsemantics-equality": true,
+		"reflect-allow":            []any{"allowed"},
+		"boundary-packages":        []any{"boundary"},
+		"fullstructcomp-min":       3,
+		"fullstructcomp-maxignore": 20,
+		"errsemantics-equality":    true,
 		"enable": []any{
 			fullstructcomp.Analyzer.Name,
 			errsemantics.Analyzer.Name,
@@ -509,10 +510,11 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 		{noreflect.Analyzer, "allow", ""},
 		{noadhoctypeswitch.Analyzer, "boundary", ""},
 		{fullstructcomp.Analyzer, "min", strconv.Itoa(fullstructcomp.DefaultMin)},
+		{fullstructcomp.Analyzer, "maxignore", strconv.Itoa(fullstructcomp.DefaultMaxIgnore)},
 		{errsemantics.Analyzer, "equality", "false"},
 	}
 	for _, rule := range configurable {
-		t.Run(rule.shared.Name, func(t *testing.T) {
+		t.Run(rule.shared.Name+"."+rule.flag, func(t *testing.T) {
 			if configured := byName(t, built, rule.shared.Name); configured == rule.shared {
 				t.Error("BuildAnalyzers returned the shared analyzer; the next run would inherit these settings")
 			}
@@ -590,4 +592,59 @@ func TestBuildAnalyzersGivesFullstructcompItsMinimum(t *testing.T) {
 
 	configured := byName(t, built, fullstructcomp.Analyzer.Name)
 	analysistest.Run(t, analysistest.TestData(), configured, "structmin")
+}
+
+// The fullstructcomp-maxignore setting carries the cost gate of rule
+// G12 on the golangci-lint path.
+func TestNewDecodesFullStructCompMaxIgnore(t *testing.T) {
+	p, err := New(map[string]any{"fullstructcomp-maxignore": 20})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if got.settings.FullStructCompMaxIgnore == nil {
+		t.Fatal("fullstructcomp-maxignore = none; want the number the settings hold")
+	}
+	if *got.settings.FullStructCompMaxIgnore != 20 {
+		t.Errorf("fullstructcomp-maxignore = %d; want 20", *got.settings.FullStructCompMaxIgnore)
+	}
+}
+
+// A configuration that names no cost gets the default of the rule. The
+// field is a pointer for the same reason the minimum is one: zero is a
+// setting of its own, and it reports a group whose fix carries no
+// ignore name.
+func TestBuildAnalyzersDefaultsTheMaxIgnore(t *testing.T) {
+	p, err := New(map[string]any{})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if names := got.maxIgnoreNames(); names != fullstructcomp.DefaultMaxIgnore {
+		t.Errorf("maxignore = %d; want the default %d of the rule", names, fullstructcomp.DefaultMaxIgnore)
+	}
+}
+
+// The number must reach the analyzer, so this test runs the analyzer
+// that BuildAnalyzers returned. The fixture holds a group whose fix
+// needs six ignore names, which the default of the rule rejects.
+func TestBuildAnalyzersGivesFullstructcompItsMaxIgnore(t *testing.T) {
+	built, err := build(t, map[string]any{
+		"fullstructcomp-maxignore": 20,
+		"enable":                   []any{fullstructcomp.Analyzer.Name},
+	})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+
+	configured := byName(t, built, fullstructcomp.Analyzer.Name)
+	analysistest.Run(t, analysistest.TestData(), configured, "structignore")
 }

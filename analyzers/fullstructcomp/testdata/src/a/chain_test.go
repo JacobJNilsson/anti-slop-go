@@ -17,12 +17,21 @@ func TestCallBreaksTheChain(t *testing.T) {
 	require.Equal(t, want.Count, got.cell().Count)
 }
 
-// An index step, a pointer step, and parentheses all stay inside one
-// chain, and the whole path is the field.
-func TestChainSteps(t *testing.T) {
+// An index step stays inside one chain, and the whole path is the
+// field. Both assertions sit under one field, so the message names that
+// field and not the whole value.
+func TestIndexStep(t *testing.T) {
 	got := build()
-	require.Equal(t, "a", got.Cells[0].Name) // want `assertions name 2 fields of got one at a time`
-	require.Equal(t, "b", (*got.Cell).Name)
+	require.Equal(t, "a", got.Cells[0].Name) // want `assertions name 2 fields of got one at a time; compare got.Cells as a whole`
+	require.Equal(t, 1, got.Cells[0].Count)
+}
+
+// A pointer step and parentheses stay inside one chain as well, and
+// they name another field of the value than the index step does.
+func TestPointerStep(t *testing.T) {
+	got := build()
+	require.Equal(t, "b", (*got.Cell).Name) // want `assertions name 2 fields of got one at a time; compare got.Cell as a whole`
+	require.Equal(t, 2, (*got.Cell).Count)
 }
 
 // The root of the chain names a package, and a package is no variable,
