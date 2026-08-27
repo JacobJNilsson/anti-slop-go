@@ -1,5 +1,5 @@
-// This file holds the file tests that every rule applies. A rule reads
-// the shape of hand-written code, and the two tests below answer which
+// This file holds the file tests that the rules apply. A rule reads
+// the shape of hand-written code, and the tests below answer which
 // file it reads. One implementation cannot drift from itself.
 
 package signature
@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/JacobJNilsson/anti-slop-go/internal/pathmatch"
 )
 
 // generatedMarkers holds the marker text of a generated file. The test
@@ -104,12 +106,50 @@ func headerText(file *ast.File) string {
 	return strings.Join(groups, "\n")
 }
 
-// IsTestFile reports whether a file is a test file. The name of the
-// file is the whole test, which is the test the go tool applies.
+// IsTestFile reports whether a file is a test file by its name. The
+// name is the test the go tool applies.
 //
 // The name of the package answers another question. It separates the
 // external test package from the test files that sit in the package
 // under test. A rule that reads test code reads both.
+//
+// A project also holds test code that carries no such name, and
+// TestFiles below states the wider test that the rules apply.
 func IsTestFile(file *token.File) bool {
 	return strings.HasSuffix(file.Name(), "_test.go")
+}
+
+// IsTestPackage reports whether the patterns name a package that
+// serves tests. 003 states the pattern syntax.
+//
+// The external test package of a package carries the path of that
+// package with "_test" at the end. Both hold the code of one package,
+// so the test drops that suffix and one entry covers both.
+func IsTestPackage(patterns []string, path string) bool {
+	return pathmatch.Any(patterns, strings.TrimSuffix(path, "_test"))
+}
+
+// TestFiles returns the test that decides whether a position of one
+// pass sits in a test file. The test answers true for a position in a
+// file whose name ends in "_test.go". It answers true for every
+// position of a package that the patterns name.
+//
+// A package can serve tests and carry no such file name. A shared
+// suite that a TestMain function starts is one such package. The file
+// name test alone makes its files production code, so the rules that
+// read test files report the wrong thing there. The test-packages
+// setting names the package, and 002 states which packages count.
+//
+// Five rules read this test, so the module holds one answer for one
+// file. 003 states the setting and the five flags.
+func TestFiles(pass *analysis.Pass, testPackages []string) func(pos token.Pos) bool {
+	if IsTestPackage(testPackages, pass.Pkg.Path()) {
+		return func(token.Pos) bool { return true }
+	}
+
+	return func(pos token.Pos) bool {
+		file := pass.Fset.File(pos)
+
+		return file != nil && IsTestFile(file)
+	}
 }

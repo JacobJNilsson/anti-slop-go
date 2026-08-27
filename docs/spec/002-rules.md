@@ -728,6 +728,10 @@ A file that is no test file always reports, `DeepEqual` included. A
 production comparison of two values belongs to the types themselves,
 through an `Equal` method or a comparison of fields.
 
+A test file is a file whose name ends in `_test.go`. Every file of a
+package that the `test-packages` setting names is a test file as well.
+The section "The test-packages setting" states which packages count.
+
 ### What the rule leaves alone
 
 - **A generated file.** 003 states the header forms the module accepts.
@@ -808,10 +812,11 @@ func NewServer(c Clock) *Server
 ### What the rule reads
 
 The rule reads test files. A test file is a file whose name ends in
-`_test.go`. The name of the file is the whole test. The name of the
-package answers another question. The rule reads the external test
-package `a_test` and the test files that sit in package `a` the same
-way.
+`_test.go`. Every file of a package that the `test-packages` setting
+names is a test file as well. The section "The test-packages setting"
+states which packages count. The name of the package answers another
+question. The rule reads the external test package `a_test` and the
+test files that sit in package `a` the same way.
 
 The rule reports three shapes in a test file.
 
@@ -857,6 +862,9 @@ rule reports the comment. A comment with another name, such as
 
 ### What the rule leaves alone
 
+- **A variable of a package that the `test-packages` setting names.**
+  Such a package is test infrastructure, so the rule reads its
+  package-level variables the way the next entry states.
 - **A variable that a test file declares.** The rule reads the file of
   the declaration, not the file of the assignment. Such a variable is
   test infrastructure, and the test files of the package own it, its
@@ -1406,10 +1414,12 @@ placement the rule asks for, which is the line directly above the call.
   and nobody stands behind it.
 - **An init function of any package.** It runs before the program
   works, and it reports a broken build to the one who starts it.
-- **Every file whose name ends in `_test.go`.** A panic there stops one
-  test binary, and the author of the test reads the stack trace at
-  once. The exemption covers the whole file, so a helper of a test
-  needs no comment.
+- **Every test file.** A panic there stops one test binary, and the
+  author of the test reads the stack trace at once. The exemption
+  covers the whole file, so a helper of a test needs no comment. A test
+  file is a file whose name ends in `_test.go`. Every file of a package
+  that the `test-packages` setting names is a test file as well. The
+  section "The test-packages setting" states which packages count.
 - **A generated file.** 003 states the header forms the module accepts.
 - **A rethrow of a recovered value**, which the next section states.
 
@@ -1577,10 +1587,13 @@ method of the value. No option of cmp changes such a comparison.
 
 ### What the rule reads
 
-**The files.** The rule reads test files, which are the files whose
-name ends in `_test.go`. It reads the test files of the package under
-test and the external test package the same way. It skips generated
-files. 003 states the header forms the module accepts.
+**The files.** The rule reads test files. A test file is a file whose
+name ends in `_test.go`. Every file of a package that the
+`test-packages` setting names is a test file as well. The section "The
+test-packages setting" states which packages count, and an entry there
+adds findings for this rule. It reads the test files of the package
+under test and the external test package the same way. It skips
+generated files. 003 states the header forms the module accepts.
 
 **The unit.** One function declaration. A function literal inside a
 declaration belongs to that declaration, because a subtest closure is
@@ -2136,10 +2149,14 @@ identity, and never its prose.
 
 ### Where the rule reads
 
-The rule reads test files only, which `go/ast` and the file name
-decide. Production code that reads a message renders it for a person,
-and it decides no test. The rule skips generated files. 003 states the
-header forms the module accepts.
+The rule reads test files only. A test file is a file whose name ends
+in `_test.go`. Every file of a package that the `test-packages` setting
+names is a test file as well. The section "The test-packages setting"
+states which packages count, and an entry there adds findings for this
+rule. Production
+code that reads a message renders it for a person, and it decides no
+test. The rule skips generated files. 003 states the header forms the
+module accepts.
 
 The rule reads the static type of the operand. It reports the
 predeclared `error` type and an alias of it, such as `type E = error`.
@@ -2225,8 +2242,9 @@ all, so the setting costs those projects almost nothing.
 - **Every production file, and every generated file.** A helper
   package that is no test file is production code by this test. An
   `internal/testutil` that holds the assertions of a project is such a
-  package, and the rule never reads it. That is a gap of the file test, and the
-  project accepts it: the file name is the test the go tool applies.
+  package, unless the `test-packages` setting names it. The rule reads
+  a package that the setting names. A project that names no package
+  keeps the file name test, which is the test the go tool applies.
 
 ### Positions and no marker
 
@@ -2412,6 +2430,63 @@ This repository writes the comment at every entry point it owns. The
 `func(*analysis.Pass) (any, error)`. `register.NewPlugin` sets
 `New(conf any)`. So the analyzers of this module and the golangci-lint
 plugin justify themselves.
+
+## The test-packages setting, shared by G07, G08, G11, G12, and G13
+
+Five rules must decide whether a file is a test file or a production
+file. The `test-packages` setting states the answer for a whole
+package, and the five rules read one implementation of it.
+
+**The test.** A file is a test file when its name ends in `_test.go`.
+It is a test file as well when the import path of its package matches
+a pattern of the setting. The patterns take the syntax that every
+other package-naming setting takes, and 003 states it.
+`boundary-packages` and `reflect-allow` take the same syntax. The test
+drops a trailing `_test` from the path, so one entry covers a package
+and its external test package. An empty list names no package, which
+is the default of all five rules.
+
+**Why the file name is not enough.** A project holds packages that
+serve tests and carry no `_test.go` name. A shared suite that a
+`TestMain` function starts is such a package. The go tool builds it
+like production code, and the file name test therefore reads it as
+production code. The five rules then judge it by the wrong standard.
+
+**The evidence.** An adoption review of the private service measured
+the cost. G11 reports 23 findings there, and 12 of them sit in two
+test-helper files. The reviewer read those 12 as noise. A panic in a
+test helper stops one test binary, and its author reads the stack
+trace at once. That is the reason the rule exempts a `_test.go` file
+already.
+
+The entry that removes those 12 findings also adds 2 findings of G08.
+A helper there assigns a package-level variable of a third-party web
+library, and it restores the value in a cleanup. Both directions of
+the setting therefore show in one repository.
+
+**What each rule does with the answer.** G07 gives such a package the
+`reflect.DeepEqual` allowance of a test file. G08 reads the
+assignments of such a package, and it treats a package-level variable
+that the package declares as test infrastructure. G11 asks for no
+`PANICS:` comment there.
+
+G12 and G13 read no such package today, and this change makes them
+read it. An entry therefore adds findings for those two rules, and it
+removes findings for the other three. Both directions are the point. A
+helper that asserts field after field, or that reads the text of an
+error, is a test assertion wherever it sits.
+
+**One entry names one kind of package.** A package that serves tests
+and holds production code as well loses reports of G07, G08, and G11.
+It loses them for its production code too. Name a package that serves
+tests alone.
+
+The golangci-lint plugin reads the key `test-packages`. The standalone
+paths read `-noreflect.testpackages`, `-nomonkeypatch.testpackages`,
+`-justifypanic.testpackages`, `-fullstructcomp.testpackages`, and
+`-errsemantics.testpackages`. Each flag takes the patterns as a
+comma-separated list, and a repeated flag adds patterns. 003 states
+the setting with the other keys.
 
 ## Rules considered and rejected
 

@@ -15,6 +15,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 
+	"github.com/JacobJNilsson/anti-slop-go/internal/pathmatch"
 	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
@@ -24,8 +25,12 @@ A test must not rewire production code through a mutable global. The
 seam belongs in the design: accept an interface or a function value as
 a parameter or as a field, and give the test its own value.
 
-The analyzer reads test files, which are the files whose name ends in
-"_test.go". It reports three shapes there.
+The analyzer reads test files. A test file is a file whose name ends
+in "_test.go". Every file of a package that the testpackages flag names
+is a test file as well. The golangci-lint plugin takes the same patterns in the
+test-packages setting. A package that serves tests and carries no
+"_test.go" name, such as a shared suite, needs that entry. The
+analyzer reports three shapes in such a file.
 
 An assignment rewires behaviour that a package-level variable holds.
 Behaviour is a function value or an interface. The variable belongs to
@@ -55,13 +60,35 @@ the author changes the design and the report goes away. The analyzer
 skips generated files.`
 
 // Analyzer is the G08 analyzer. Consumers get it through
-// antislop.Analyzers().
-var Analyzer = &analysis.Analyzer{
-	Name:     "nomonkeypatch",
-	Doc:      doc,
-	URL:      "https://github.com/JacobJNilsson/anti-slop-go/blob/main/docs/spec/002-rules.md",
-	Requires: []*analysis.Analyzer{inspect.Analyzer},
-	Run:      run,
+// antislop.Analyzers(), and cmd/antislop registers its flag.
+var Analyzer = New(nil)
+
+// New returns an analyzer that reads the packages the patterns name as
+// test code. A programmatic consumer, such as the golangci-lint plugin,
+// builds one instance for each configuration, because two runs can hold
+// different patterns and the package-level value is shared.
+//
+// The instance carries its own flag, which writes into the
+// configuration of that instance. The flag is the configuration surface
+// of cmd/antislop and of go vet -vettool, which read no settings file.
+func New(testPackages []string) *analysis.Analyzer {
+	cfg := &config{testPackages: testPackages}
+	a := &analysis.Analyzer{
+		Name:     "nomonkeypatch",
+		Doc:      doc,
+		URL:      "https://github.com/JacobJNilsson/anti-slop-go/blob/main/docs/spec/002-rules.md",
+		Requires: []*analysis.Analyzer{inspect.Analyzer},
+		Run:      cfg.run,
+	}
+	a.Flags.Var(&cfg.testPackages, "testpackages",
+		"package path patterns whose files count as test files, separated by commas; a repeated flag adds patterns")
+
+	return a
+}
+
+// config holds the settings of one analyzer instance.
+type config struct {
+	testPackages pathmatch.List
 }
 
 // patchLibraries holds the module paths of the runtime patching
@@ -91,12 +118,13 @@ const (
 const advice = "inject the dependency through a parameter or a field"
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
-func run(pass *analysis.Pass) (any, error) {
+func (c *config) run(pass *analysis.Pass) (any, error) {
 	// SAFETY: inspect.Analyzer is in Requires, so the driver always
 	// supplies its result, and that result is an *inspector.Inspector.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	generated := signature.GeneratedFiles(pass)
+	testFile := signature.TestFiles(pass, c.testPackages)
 
 	// tests holds every file the rule reads: a test file that no
 	// program writes. A report against a generated file has no reader
@@ -104,7 +132,7 @@ func run(pass *analysis.Pass) (any, error) {
 	tests := make(map[*token.File]bool, len(pass.Files))
 	for _, file := range pass.Files {
 		tokenFile := pass.Fset.File(file.FileStart)
-		if !signature.IsTestFile(tokenFile) || generated(file.FileStart) {
+		if !testFile(file.FileStart) || generated(file.FileStart) {
 			continue
 		}
 		tests[tokenFile] = true
@@ -117,7 +145,7 @@ func run(pass *analysis.Pass) (any, error) {
 	// expression under them.
 	report := func(target ast.Expr) {
 		target = ast.Unparen(target)
-		if patches(pass, target) {
+		if c.patches(pass, target) {
 			pass.Reportf(target.Pos(), variableMessage, types.ExprString(target), advice)
 		}
 	}
@@ -154,7 +182,7 @@ func run(pass *analysis.Pass) (any, error) {
 //
 // The analyzer reads the target and never the value. A method value, a
 // function literal, and a named function all rewire the same seam.
-func patches(pass *analysis.Pass, target ast.Expr) bool {
+func (c *config) patches(pass *analysis.Pass, target ast.Expr) bool {
 	root := rootVariable(pass.TypesInfo, target)
 	if root == nil || !packageLevel(root) {
 		return false
@@ -167,6 +195,13 @@ func patches(pass *analysis.Pass, target ast.Expr) bool {
 	// of the assignment does not. A helper declares the variable in one
 	// test file, and another test file of the package assigns to it.
 	if declaredInTestFile(pass.Fset, root.Pos()) {
+		return false
+	}
+	// A package that the patterns name serves tests, and its
+	// package-level variables are test infrastructure as well. The
+	// package of the variable answers here, because such a package holds
+	// no file that the file name test recognises.
+	if signature.IsTestPackage(c.testPackages, root.Pkg().Path()) {
 		return false
 	}
 	// The root carries the ownership, and the target carries the type.

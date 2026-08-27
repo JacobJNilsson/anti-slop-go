@@ -35,7 +35,7 @@ func TestNewAllowsAMatchingPackage(t *testing.T) {
 	}
 	for _, pattern := range patterns {
 		t.Run(pattern, func(t *testing.T) {
-			analysistest.Run(t, analysistest.TestData(), noreflect.New([]string{pattern}), allowed)
+			analysistest.Run(t, analysistest.TestData(), noreflect.New([]string{pattern}, nil), allowed)
 		})
 	}
 }
@@ -55,8 +55,41 @@ func TestNewKeepsReportsOutsideTheAllowlist(t *testing.T) {
 	}
 	for _, pattern := range patterns {
 		t.Run(pattern, func(t *testing.T) {
-			analysistest.Run(t, analysistest.TestData(), noreflect.New([]string{pattern}), "a")
+			analysistest.Run(t, analysistest.TestData(), noreflect.New([]string{pattern}, nil), "a")
 		})
+	}
+}
+
+// The two fixture packages of the test-packages setting. Both hold one
+// DeepEqual call, and the suite package holds a second file that
+// reaches beyond DeepEqual.
+const (
+	suitePackage = "example.com/app/internal/suite"
+	storePackage = "example.com/app/internal/store"
+)
+
+// A package that the setting names serves tests, so the DeepEqual
+// allowance holds for its files. The suite fixture carries a want
+// comment at the use beyond DeepEqual and nowhere else. The store
+// fixture beside it holds the same DeepEqual call, and its import
+// reports.
+func TestNewReadsATestPackageAsTestCode(t *testing.T) {
+	patterns := []string{suitePackage}
+	analysistest.Run(t, analysistest.TestData(), noreflect.New(nil, patterns), suitePackage, storePackage)
+}
+
+// The testpackages flag is the configuration surface of that setting
+// outside golangci-lint, and it holds the same promise about one
+// instance.
+func TestTestPackagesFlagConfiguresOneInstance(t *testing.T) {
+	configured := noreflect.New(nil, nil)
+	if err := configured.Flags.Set("testpackages", ".../internal/suite"); err != nil {
+		t.Fatalf("the testpackages flag rejected a pattern: %v", err)
+	}
+	analysistest.Run(t, analysistest.TestData(), configured, suitePackage, storePackage)
+
+	if got := noreflect.Analyzer.Flags.Lookup("testpackages").Value.String(); got != "" {
+		t.Errorf("the analyzer of the module holds the patterns %q of another instance", got)
 	}
 }
 
@@ -64,7 +97,7 @@ func TestNewKeepsReportsOutsideTheAllowlist(t *testing.T) {
 // go vet -vettool. It writes into the analyzer instance it sits on, so
 // two instances never share a setting.
 func TestAllowFlagConfiguresOneInstance(t *testing.T) {
-	configured := noreflect.New(nil)
+	configured := noreflect.New(nil, nil)
 	if err := configured.Flags.Set("allow", "example.com/app/..."); err != nil {
 		t.Fatalf("the allow flag rejected a pattern: %v", err)
 	}
@@ -73,7 +106,7 @@ func TestAllowFlagConfiguresOneInstance(t *testing.T) {
 	// Another instance holds its own patterns. The plugin builds one
 	// instance for each run for this reason: it never writes to the
 	// analyzer value that every consumer of the module shares.
-	if got := noreflect.New(nil).Flags.Lookup("allow").Value.String(); got != "" {
+	if got := noreflect.New(nil, nil).Flags.Lookup("allow").Value.String(); got != "" {
 		t.Errorf("a new analyzer already holds the patterns %q of another instance", got)
 	}
 	if got := noreflect.Analyzer.Flags.Lookup("allow").Value.String(); got != "" {
@@ -84,7 +117,7 @@ func TestAllowFlagConfiguresOneInstance(t *testing.T) {
 // The flag takes a comma-separated list, and it appends on every
 // occurrence, so a repeated flag adds patterns.
 func TestAllowFlagAppendsAndSplits(t *testing.T) {
-	a := noreflect.New(nil)
+	a := noreflect.New(nil, nil)
 	if err := a.Flags.Set("allow", "other.com/lib,.../internal/codec"); err != nil {
 		t.Fatalf("the allow flag rejected a list: %v", err)
 	}
@@ -101,10 +134,12 @@ func TestAllowFlagAppendsAndSplits(t *testing.T) {
 	}
 }
 
-// The package-level analyzer carries the flag, because cmd/antislop
+// The package-level analyzer carries both flags, because cmd/antislop
 // registers the analyzers of the module through antislop.Analyzers().
-func TestAnalyzerCarriesTheFlag(t *testing.T) {
-	if noreflect.Analyzer.Flags.Lookup("allow") == nil {
-		t.Error("the analyzer of the module registers no allow flag")
+func TestAnalyzerCarriesTheFlags(t *testing.T) {
+	for _, flag := range []string{"allow", "testpackages"} {
+		if noreflect.Analyzer.Flags.Lookup(flag) == nil {
+			t.Errorf("the analyzer of the module registers no %s flag", flag)
+		}
 	}
 }

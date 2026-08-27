@@ -15,6 +15,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 
+	"github.com/JacobJNilsson/anti-slop-go/internal/pathmatch"
 	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
@@ -26,10 +27,17 @@ The identity of the error is the evidence: errors.Is names a sentinel,
 and errors.As names a type. Rule G10 owns the type-assertion half of
 this idea, and this rule owns the string half.
 
-The rule reads test files only, and it skips generated files. It reads
-the static type of the operand, and reports the predeclared error type
-and an alias of it. That is the narrow test of rule G10. An interface
-that declares Error() string under another name is another type.
+The rule reads test files only, and it skips generated files. A test
+file is a file whose name ends in _test.go. Every file of a package
+that the testpackages flag names is a test file as well. The golangci-lint plugin
+takes the same patterns in the test-packages setting. A package that
+serves tests and carries no _test.go name, such as a shared suite,
+needs that entry.
+
+The rule reads the static type of the operand, and reports the
+predeclared error type and an alias of it. That is the narrow test of
+rule G10. An interface that declares Error() string under another name
+is another type.
 
 The rule reports these forms by default:
 
@@ -133,19 +141,21 @@ var errorType = types.Universe.Lookup("error").Type()
 // Analyzer is the G13 analyzer. The rule is opt-in, so the
 // golangci-lint plugin runs it only when the enable setting names it.
 // Consumers get it through antislop.Analyzers(), and cmd/antislop
-// registers its equality flag.
-var Analyzer = New(false)
+// registers its flags.
+var Analyzer = New(false, nil)
 
-// New returns an analyzer that reads the equality setting. A
+// New returns an analyzer that reads the equality setting, and that
+// reads the packages the testPackages patterns name as test code. A
 // programmatic consumer, such as the golangci-lint plugin, builds one
 // instance for each configuration. Two runs can hold different
 // settings, and the package-level value is shared.
 //
-// The instance carries its own equality flag, which writes into the
-// configuration of that instance. The flag is the configuration surface
-// of cmd/antislop and of go vet -vettool, which read no settings file.
-func New(equality bool) *analysis.Analyzer {
-	cfg := &config{equality: equality}
+// The instance carries its own flags, which write into the
+// configuration of that instance. The flags are the configuration
+// surface of cmd/antislop and of go vet -vettool, which read no
+// settings file.
+func New(equality bool, testPackages []string) *analysis.Analyzer {
+	cfg := &config{equality: equality, testPackages: testPackages}
 	a := &analysis.Analyzer{
 		Name:     "errsemantics",
 		Doc:      doc,
@@ -155,13 +165,16 @@ func New(equality bool) *analysis.Analyzer {
 	}
 	a.Flags.BoolVar(&cfg.equality, "equality", equality,
 		"report a comparison of an error message as well; a package that tests its own message text leaves it off")
+	a.Flags.Var(&cfg.testPackages, "testpackages",
+		"package path patterns whose files count as test files, separated by commas; a repeated flag adds patterns")
 
 	return a
 }
 
 // config holds the settings of one analyzer instance.
 type config struct {
-	equality bool
+	equality     bool
+	testPackages pathmatch.List
 }
 
 // form names the group of one reported call. The groups differ in the
@@ -194,10 +207,11 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	generated := signature.GeneratedFiles(pass)
+	testFile := signature.TestFiles(pass, c.testPackages)
 	// A test file holds the assertions of a project. Production code
 	// that reads a message renders it, and it decides no test.
 	reported := func(pos token.Pos) bool {
-		return signature.IsTestFile(pass.Fset.File(pos)) && !generated(pos)
+		return testFile(pos) && !generated(pos)
 	}
 
 	insp.Preorder([]ast.Node{(*ast.CallExpr)(nil), (*ast.BinaryExpr)(nil)}, func(n ast.Node) {

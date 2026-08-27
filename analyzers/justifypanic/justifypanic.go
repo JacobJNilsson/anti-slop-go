@@ -14,6 +14,7 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/types/typeutil"
 
+	"github.com/JacobJNilsson/anti-slop-go/internal/pathmatch"
 	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
@@ -34,17 +35,49 @@ log in both forms, and the position names the call. A logger of the
 project is another type, and the rule reads no call of it.
 
 The rule leaves alone: the function main of a main package, an init
-function of any package, every file whose name ends in _test.go, a
-generated file, and a rethrow of a recovered value.`
+function of any package, every test file, a generated file, and a
+rethrow of a recovered value.
+
+A test file is a file whose name ends in _test.go. Every file of a
+package that the testpackages flag names is a test file as well. The golangci-lint plugin
+takes the same patterns in the test-packages setting. A package that
+serves tests and carries no _test.go name, such as a shared suite,
+needs that entry. A pattern matches the whole import path, and 003
+states the syntax.`
 
 // Analyzer reports a call that stops the process and carries no PANICS
 // justification. It implements rule G11; see docs/spec/002-rules.md.
-var Analyzer = &analysis.Analyzer{
-	Name:     "justifypanic",
-	Doc:      doc,
-	URL:      "https://github.com/JacobJNilsson/anti-slop-go/blob/main/docs/spec/002-rules.md",
-	Requires: []*analysis.Analyzer{inspect.Analyzer},
-	Run:      run,
+// The rule is opt-in, so the golangci-lint plugin runs it only when the
+// enable setting names it. Consumers get it through
+// antislop.Analyzers(), and cmd/antislop registers its flag.
+var Analyzer = New(nil)
+
+// New returns an analyzer that reads the packages the patterns name as
+// test code. A programmatic consumer, such as the golangci-lint plugin,
+// builds one instance for each configuration, because two runs can hold
+// different patterns and the package-level value is shared.
+//
+// The instance carries its own flag, which writes into the
+// configuration of that instance. The flag is the configuration surface
+// of cmd/antislop and of go vet -vettool, which read no settings file.
+func New(testPackages []string) *analysis.Analyzer {
+	cfg := &config{testPackages: testPackages}
+	a := &analysis.Analyzer{
+		Name:     "justifypanic",
+		Doc:      doc,
+		URL:      "https://github.com/JacobJNilsson/anti-slop-go/blob/main/docs/spec/002-rules.md",
+		Requires: []*analysis.Analyzer{inspect.Analyzer},
+		Run:      cfg.run,
+	}
+	a.Flags.Var(&cfg.testPackages, "testpackages",
+		"package path patterns whose files count as test files, separated by commas; a repeated flag adds patterns")
+
+	return a
+}
+
+// config holds the settings of one analyzer instance.
+type config struct {
+	testPackages pathmatch.List
 }
 
 // message is the single diagnostic this rule emits. It names the call
@@ -76,12 +109,13 @@ var terminators = map[string][]string{
 }
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
-func run(pass *analysis.Pass) (any, error) {
+func (c *config) run(pass *analysis.Pass) (any, error) {
 	// SAFETY: inspect.Analyzer is in Requires, so the driver puts its
 	// result type in ResultOf before it calls this function.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	justifications := signature.NewJustifications(pass, panicsMarker)
+	testFile := signature.TestFiles(pass, c.testPackages)
 
 	insp.WithStack([]ast.Node{(*ast.CallExpr)(nil)}, func(n ast.Node, push bool, stack []ast.Node) bool {
 		if !push {
@@ -93,7 +127,7 @@ func run(pass *analysis.Pass) (any, error) {
 		if !stops {
 			return true
 		}
-		if signature.IsTestFile(pass.Fset.File(call.Pos())) || justifications.Generated(call.Pos()) {
+		if testFile(call.Pos()) || justifications.Generated(call.Pos()) {
 			return true
 		}
 		if programEntry(pass, stack) {

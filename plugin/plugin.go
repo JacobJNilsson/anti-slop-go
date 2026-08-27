@@ -28,6 +28,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/nomonkeypatch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
@@ -84,6 +85,15 @@ type Settings struct {
 	// key above is: zero is a setting of its own, and it reports a group
 	// whose fix carries no ignore name at all.
 	FullStructCompMaxIgnore *int `json:"fullstructcomp-maxignore"`
+
+	// TestPackages names the package path patterns whose files count as
+	// test files. Rules G07, G08, G11, G12, and G13 must decide whether
+	// a file is a test file, and this one setting answers for all five.
+	// A package that serves tests and holds no file whose name ends in
+	// _test.go needs an entry, such as a shared suite. 002 states which
+	// packages count, and 003 states the pattern syntax. An empty list
+	// names no such package, which is the default of all five rules.
+	TestPackages []string `json:"test-packages"`
 
 	// Equality turns on the equality forms of rule G13. Such a form
 	// compares the message of an error against a string. A package
@@ -153,11 +163,15 @@ func (p *plugin) configured() []*analysis.Analyzer {
 		case noadhoctypeswitch.Analyzer.Name:
 			all[i] = noadhoctypeswitch.New(p.settings.BoundaryPackages)
 		case noreflect.Analyzer.Name:
-			all[i] = noreflect.New(p.settings.ReflectAllow)
+			all[i] = noreflect.New(p.settings.ReflectAllow, p.settings.TestPackages)
+		case nomonkeypatch.Analyzer.Name:
+			all[i] = nomonkeypatch.New(p.settings.TestPackages)
+		case justifypanic.Analyzer.Name:
+			all[i] = justifypanic.New(p.settings.TestPackages)
 		case fullstructcomp.Analyzer.Name:
-			all[i] = fullstructcomp.New(p.minFields(), p.maxIgnoreNames())
+			all[i] = fullstructcomp.New(p.minFields(), p.maxIgnoreNames(), p.settings.TestPackages)
 		case errsemantics.Analyzer.Name:
-			all[i] = errsemantics.New(p.settings.Equality)
+			all[i] = errsemantics.New(p.settings.Equality, p.settings.TestPackages)
 		}
 	}
 

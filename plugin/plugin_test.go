@@ -14,8 +14,10 @@ import (
 	antislop "github.com/JacobJNilsson/anti-slop-go"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/nomonkeypatch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
@@ -525,6 +527,60 @@ func TestBuildAnalyzersGivesErrsemanticsItsSetting(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), configured, "errtext")
 }
 
+// The test-packages setting is the shared configuration surface of the
+// five rules that decide whether a file is a test file. 002 states
+// which packages count.
+func TestNewDecodesTestPackages(t *testing.T) {
+	patterns := []string{"example.com/app/internal/suite", ".../testsupport"}
+
+	p, err := New(map[string]any{"test-packages": []any{patterns[0], patterns[1]}})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if !slices.Equal(got.settings.TestPackages, patterns) {
+		t.Errorf("test-packages = %v; want %v", got.settings.TestPackages, patterns)
+	}
+}
+
+// One key fans out to five constructors, so the patterns must reach
+// every one of the five rules. Each fixture package below states the
+// behaviour of one rule under the setting. A rule that never received
+// the patterns fails its own case.
+func TestBuildAnalyzersFansTheTestPackagesOutToEveryRule(t *testing.T) {
+	built, err := build(t, map[string]any{
+		"test-packages": []any{"example.com/app/internal/suite*"},
+		"enable": []any{
+			justifypanic.Analyzer.Name,
+			fullstructcomp.Analyzer.Name,
+			errsemantics.Analyzer.Name,
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+
+	fixtures := []struct {
+		rule    string
+		fixture string
+	}{
+		{justifypanic.Analyzer.Name, "example.com/app/internal/suitepanic"},
+		{noreflect.Analyzer.Name, "example.com/app/internal/suitereflect"},
+		{nomonkeypatch.Analyzer.Name, "example.com/app/internal/suitepatch"},
+		{fullstructcomp.Analyzer.Name, "example.com/app/internal/suitecomp"},
+		{errsemantics.Analyzer.Name, "example.com/app/internal/suiteerr"},
+	}
+	for _, tt := range fixtures {
+		t.Run(tt.rule, func(t *testing.T) {
+			analysistest.Run(t, analysistest.TestData(), byName(t, built, tt.rule), tt.fixture)
+		})
+	}
+}
+
 // Two golangci-lint runs can hold different settings, and the analyzer
 // values of the module are shared. The plugin must therefore build its
 // own instance of every configurable rule, and never write to the
@@ -536,7 +592,9 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 		"fullstructcomp-min":       3,
 		"fullstructcomp-maxignore": 20,
 		"errsemantics-equality":    true,
+		"test-packages":            []any{"example.com/app/internal/suite*"},
 		"enable": []any{
+			justifypanic.Analyzer.Name,
 			fullstructcomp.Analyzer.Name,
 			errsemantics.Analyzer.Name,
 		},
@@ -558,6 +616,11 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 		{fullstructcomp.Analyzer, "min", strconv.Itoa(fullstructcomp.DefaultMin)},
 		{fullstructcomp.Analyzer, "maxignore", strconv.Itoa(fullstructcomp.DefaultMaxIgnore)},
 		{errsemantics.Analyzer, "equality", "false"},
+		{noreflect.Analyzer, "testpackages", ""},
+		{nomonkeypatch.Analyzer, "testpackages", ""},
+		{justifypanic.Analyzer, "testpackages", ""},
+		{fullstructcomp.Analyzer, "testpackages", ""},
+		{errsemantics.Analyzer, "testpackages", ""},
 	}
 	for _, rule := range configurable {
 		t.Run(rule.shared.Name+"."+rule.flag, func(t *testing.T) {

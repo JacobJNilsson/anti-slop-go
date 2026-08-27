@@ -89,24 +89,7 @@ func New(boundary []string) *analysis.Analyzer {
 
 // config holds the settings of one analyzer instance.
 type config struct {
-	boundary patternList
-}
-
-// patternList is the value of the boundary flag. Each occurrence of the
-// flag adds the patterns of a comma-separated list, so a caller writes
-// one flag or several. No import path holds a comma, so the separator
-// takes no escape.
-type patternList []string
-
-// String returns the patterns as the flag reads them. The flag package
-// prints this text in the usage message.
-func (p *patternList) String() string { return strings.Join(*p, ",") }
-
-// Set adds the patterns of one occurrence of the flag. It rejects
-// nothing: a pattern that matches no package names no boundary.
-func (p *patternList) Set(value string) error {
-	*p = append(*p, strings.Split(value, ",")...)
-	return nil
+	boundary pathmatch.List
 }
 
 // message is the one diagnostic the rule emits. It names the problem
