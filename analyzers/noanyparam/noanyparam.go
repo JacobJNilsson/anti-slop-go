@@ -44,8 +44,9 @@ above the declaration. The analyzer cannot judge the text; review must.
 
 The analyzer skips generated files.`
 
-// Analyzer is the G03 analyzer. Consumers get it through
-// antislop.Analyzers().
+// Analyzer is the G03 analyzer. The rule is opt-in, so the
+// golangci-lint plugin runs it only when the enable setting names it.
+// Consumers get it through antislop.Analyzers().
 var Analyzer = &analysis.Analyzer{
 	Name:     "noanyparam",
 	Doc:      doc,

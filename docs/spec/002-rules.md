@@ -86,7 +86,7 @@ type RenderInput struct {
 func Render(data RenderInput) ([]byte, error)
 ```
 
-## G03 `noanyparam`: no `any` parameters (error)
+## G03 `noanyparam`: no `any` parameters (opt-in)
 
 An `any` parameter moves parsing from the boundary into the callee.
 Accept a named domain type. Generic type parameters with constraints
@@ -145,6 +145,36 @@ func Store[V Storable](key string, value V) error
 
 The rule skips generated files. 003 states the header forms the module
 accepts.
+
+### Why the rule is opt-in
+
+Go limits the reach of an `any` parameter. The callee cannot read such
+a value until it asserts a type, and three rules of this set report
+that assertion. G01 asks for a `SAFETY:` comment above a panicking
+assertion. G05 reports a value that passes through `any` and comes back
+through an assertion. G06 reports a type switch on an `any` value
+outside a boundary package. A widened parameter therefore leaves
+evidence at the use site, and the use site keeps its report.
+
+The escape that the rule documents has a cost for the reader. A
+defined type, such as `type Payload any`, satisfies the rule, and it
+carries the same values as `any`. An adoption review read that escape
+as ceremony. The declaration states a domain name, and no field and no
+method stands under it. A project turns on such a rule deliberately,
+because a reviewer rejects the escape it asks for.
+
+The rule exempts no test file. The private service reports 43
+findings, and at least 15 of them sit in test code. A test helper that
+takes an `any` value gives the same report as an exported API. Those 15
+findings carry no API decision, so a first run hides the exported
+signatures behind them.
+
+A project that leaves the rule off gets no report on a new API
+signature. The `enable` setting restores the report, and 003 states the
+setting. The opt-in severity belongs to the golangci-lint plugin, which
+is the path that reads a configuration file. `cmd/antislop` and `go vet
+-vettool` read none, so they run this rule by default, and
+`-noanyparam=false` turns it off there. 003 records the split.
 
 ## G04 `noanyreturn`: no `any` returns (error)
 

@@ -1,6 +1,7 @@
 package antislopplugin
 
 import (
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 )
 
@@ -36,7 +38,7 @@ func defaultNames(t *testing.T) []string {
 
 	names := registryNames(t)
 	if len(optInRules) == 0 {
-		t.Fatal("optInRules is empty; 002 gives rules G09, G11, and G13 an opt-in severity")
+		t.Fatal("optInRules is empty; 002 gives rules G03, G09, G11, G12, and G13 an opt-in severity")
 	}
 	out := make([]string, 0, len(names))
 	for _, n := range names {
@@ -254,6 +256,50 @@ func TestBuildAnalyzersAppliesTheOptInSeverity(t *testing.T) {
 	}
 	if names := analyzerNames(enabled); !slices.Equal(names, registryNames(t)) {
 		t.Errorf("analyzers = %v; enable names every opt-in rule, so the run applies every rule %v", names, registryNames(t))
+	}
+}
+
+// The opt-in set of the plugin is a decision of 002, and this test
+// pins it by name. Every helper above reads optInRules, so each one
+// follows an edit of that map. This list does not, so a rule that
+// moves between the two sets fails here first.
+func TestOptInRulesNamesTheRulesOfTheSpecification(t *testing.T) {
+	want := []string{
+		"errsemantics",      // G13
+		"fullstructcomp",    // G12
+		"justifypanic",      // G11
+		"noanyparam",        // G03
+		"nointerfacereturn", // G09
+	}
+
+	got := slices.Sorted(maps.Keys(optInRules))
+	if !slices.Equal(got, want) {
+		t.Errorf("optInRules = %v; want %v", got, want)
+	}
+	if byDefault := defaultNames(t); len(byDefault) != len(registryNames(t))-len(want) {
+		t.Errorf("the default set holds %d rules; want %d", len(byDefault), len(registryNames(t))-len(want))
+	}
+}
+
+// Rule G03 is opt-in, and 002 states why under "Why the rule is opt-in".
+// A project that wants the rule names it in enable. This test states
+// both directions for that one rule, because the move is the reason the
+// rule leaves the default set.
+func TestBuildAnalyzersKeepsNoanyparamOffUntilEnable(t *testing.T) {
+	byDefault, err := build(t, map[string]any{})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+	if names := analyzerNames(byDefault); slices.Contains(names, noanyparam.Analyzer.Name) {
+		t.Errorf("analyzers = %v; rule G03 is opt-in and enable does not name it", names)
+	}
+
+	enabled, err := build(t, map[string]any{"enable": []any{noanyparam.Analyzer.Name}})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+	if names := analyzerNames(enabled); !slices.Contains(names, noanyparam.Analyzer.Name) {
+		t.Errorf("analyzers = %v; enable names rule G03, so the run must apply it", names)
 	}
 }
 
