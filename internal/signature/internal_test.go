@@ -12,8 +12,8 @@ import (
 )
 
 // The tests below drive the shared justification machinery directly.
-// Every marker of docs/spec/003-implementation.md uses it, so a fixture
-// of one rule cannot pin it for the others.
+// Every justification of docs/spec/003-implementation.md uses it, so a
+// fixture of one rule cannot pin it for the others.
 
 const trailingMarkerSrc = `package p
 
@@ -24,7 +24,7 @@ func F(v any) {}
 // analysistest always runs with a driver that provides ReadFile and
 // readable sources, so the fallback and the fail-open path of the
 // own-line test need direct tests.
-func TestMarkedAboveReadsTheOwnLineTestFromTheSource(t *testing.T) {
+func TestCommentAboveReadsTheOwnLineTestFromTheSource(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "p.go", trailingMarkerSrc, parser.ParseComments)
 	if err != nil {
@@ -47,9 +47,41 @@ func TestMarkedAboveReadsTheOwnLineTestFromTheSource(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pass := &analysis.Pass{Fset: fset, Files: []*ast.File{file}, ReadFile: tt.readFile}
-			got := NewJustifications(pass, contractMarker).MarkedAbove(file.FileStart, []int{declaration})
+			got := NewMarkedJustifications(pass, contractMarker).CommentAbove(file.FileStart, []int{declaration})
 			if got != tt.want {
-				t.Errorf("MarkedAbove = %v, want %v", got, tt.want)
+				t.Errorf("CommentAbove = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCommentAboveWithoutAMarkerAcceptsAnyText pins the entry of the
+// rules that read no marker word. A comment that owns its line
+// justifies the code below it, whatever its text. A comment that trails
+// code still justifies nothing.
+func TestCommentAboveWithoutAMarkerAcceptsAnyText(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"a line comment", "package p\n\n// The loader checks the payload.\nvar x = 1\n", true},
+		{"a block comment", "package p\n\n/* The loader checks the payload. */\nvar x = 1\n", true},
+		{"a group of two lines", "package p\n\n// The loader\n// checks the payload.\nvar x = 1\n", true},
+		{"a comment that trails code", "package p\n\nvar y = 1 // The loader checks the payload.\nvar x = 1\n", false},
+		{"no comment", "package p\n\nvar y = 1\nvar x = 1\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "p.go", tt.src, parser.ParseComments)
+			if err != nil {
+				t.Fatalf("the fixture source does not parse: %v", err)
+			}
+			declaration := LineOf(fset, file.Decls[len(file.Decls)-1].Pos())
+			pass := &analysis.Pass{Fset: fset, Files: []*ast.File{file}, ReadFile: func(string) ([]byte, error) { return []byte(tt.src), nil }}
+			if got := NewJustifications(pass).CommentAbove(file.FileStart, []int{declaration}); got != tt.want {
+				t.Errorf("CommentAbove = %v, want %v", got, tt.want)
 			}
 		})
 	}
