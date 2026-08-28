@@ -16,6 +16,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"regexp"
+	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -39,11 +42,19 @@ func NameCount(field *ast.Field) int {
 	return len(field.Names)
 }
 
-// contractMarker is the marker of the justification comment for rules
-// G03, G04, and G09. A signature rule keeps its marker: the doc
-// comment of a declaration sits on the same line as a justification
-// would, so any comment would justify every documented signature.
-const contractMarker = "CONTRACT"
+// contractMarker matches a line of a doc comment that carries the
+// marker CONTRACT:. The signature rules read no marker in a plain
+// comment. A doc comment cannot justify on its own, because every
+// documented declaration has one, so the marker is the way to justify
+// inside a doc comment. The expression follows the contract of
+// docs/spec/003-implementation.md: the marker starts a line of the
+// text that ast.CommentGroup.Text returns, after the space or the
+// star gutter of a block comment.
+var contractMarker = regexp.MustCompile(`(?m)^[\s*]*CONTRACT\s*:`)
+
+// articles are the words that a doc comment may put before the name
+// of the declaration. golint and revive accept them.
+var articles = map[string]bool{"A": true, "An": true, "The": true}
 
 // Contracts answers, for one analysis pass, whether the author may keep
 // the empty interface in a signature. It holds the state that answer
@@ -84,7 +95,7 @@ func NewContractsWithHome(pass *analysis.Pass) *Contracts {
 }
 
 func newContracts(pass *analysis.Pass, home bool) *Contracts {
-	return &Contracts{pass: pass, home: home, justifications: NewMarkedJustifications(pass, contractMarker)}
+	return &Contracts{pass: pass, home: home, justifications: NewJustifications(pass)}
 }
 
 // Generated reports whether pos sits in a generated file. Both rules
@@ -94,14 +105,78 @@ func (c *Contracts) Generated(pos token.Pos) bool {
 	return c.justifications.Generated(pos)
 }
 
-// Justified reports whether a CONTRACT comment sits directly above the
-// signature at the end of stack. The comment must own its line and must
-// end on the line directly above the signature, or above the
-// declaration, the field, the specification, or the statement that
-// holds it. The analyzer cannot judge the text; review must.
+// Justified reports whether a justification comment sits directly
+// above the signature at the end of stack. The comment must own its
+// line and must end on the line directly above the signature, or above
+// the declaration, the field, the specification, or the statement that
+// holds it.
+//
+// A doc comment justifies nothing, unless a line of it carries the
+// marker CONTRACT:. Every documented declaration has a doc comment on
+// that line, so a test that accepted any text would exempt every
+// documented signature. Go states the shape of a doc comment: the text
+// starts with the name of the declaration, after an optional article.
+// A comment of another shape is a justification. The analyzer cannot
+// judge the text; review must.
 func (c *Contracts) Justified(stack []ast.Node) bool {
 	pos := stack[len(stack)-1].Pos()
-	return c.justifications.CommentAbove(pos, justifyLines(c.pass.Fset, stack))
+	names := declaredNames(stack)
+	accept := func(text string) bool {
+		return !isDocComment(text, names) || contractMarker.MatchString(text)
+	}
+	return c.justifications.CommentAboveWhere(pos, justifyLines(c.pass.Fset, stack), accept)
+}
+
+// declaredNames returns the names that the declarations of stack
+// introduce: a function, a type, the names of a variable specification,
+// and the names of a field. A doc comment above any of them starts with
+// one of these names.
+func declaredNames(stack []ast.Node) map[string]bool {
+	names := make(map[string]bool)
+	for _, node := range stack {
+		switch n := node.(type) {
+		case *ast.FuncDecl:
+			names[n.Name.Name] = true
+		case *ast.TypeSpec:
+			names[n.Name.Name] = true
+		case *ast.ValueSpec:
+			for _, name := range n.Names {
+				names[name.Name] = true
+			}
+		case *ast.Field:
+			for _, name := range n.Names {
+				names[name.Name] = true
+			}
+		}
+	}
+	return names
+}
+
+// isDocComment reports whether text has the shape of a doc comment of
+// one of names: the first word, after an optional article, is one of
+// the names. The first word ends at the first character that cannot be
+// part of an identifier.
+func isDocComment(text string, names map[string]bool) bool {
+	// A block comment keeps its gutter of stars in the text.
+	words := strings.Fields(strings.TrimLeft(text, " \t\n*"))
+	if len(words) > 0 && articles[words[0]] {
+		words = words[1:]
+	}
+	if len(words) == 0 {
+		return false
+	}
+	return names[identifierPrefix(words[0])]
+}
+
+// identifierPrefix returns the identifier at the start of word. A doc
+// comment may follow the name with punctuation, such as "Handle:".
+func identifierPrefix(word string) string {
+	for i, r := range word {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+			return word[:i]
+		}
+	}
+	return word
 }
 
 // Implements reports whether an exported interface of a directly

@@ -459,8 +459,8 @@ An external API can force an `any` parameter on a function of this
 project. The section "The external contract exemption" states the two
 kinds of evidence that G03 accepts for such a parameter. The first is
 an interface of an imported package that declares the parameter. The
-second is a `CONTRACT:` comment above the declaration that names the
-API.
+second is a justification comment above the declaration that names
+the API.
 
 G06 accepts the same evidence for the operand of a switch. The operand
 must be a parameter, and the signature that declares it must be exempt
@@ -2387,19 +2387,38 @@ exemption. A generic receiver whose type parameters take no part keeps
 it. Both limits lose the exemption; neither invents one. The comment
 below is the remedy.
 
-### Evidence the author writes: a CONTRACT comment
+### Evidence the author writes: a justification comment
 
 Every other signature-setting API needs a justification comment,
 because the analyzer cannot see what sets the shape:
 
 ```go
-// CONTRACT: sync.Pool.New sets this signature.
+// sync.Pool.New sets this signature.
 func newBuffer() any { return new(bytes.Buffer) }
 ```
 
 The comment follows the justification contract of 003: it owns its
-line, and the marker `CONTRACT:` starts a line of its text. It ends on
-the line directly above the line where the signature starts. A function
+line, and it ends on the line directly above the line where the
+signature starts. The rule reads no marker word in such a comment.
+
+A doc comment justifies nothing. Every documented declaration has one
+on that line, so a test that accepted it would exempt every documented
+signature. Go states the shape of a doc comment: the text starts with
+the name of the declaration, after an optional article. The rule reads
+a comment of that shape as documentation. A documented declaration
+justifies itself with a line of the doc comment that starts with the
+marker `CONTRACT:`:
+
+```go
+// Handle processes one event of the bus.
+// CONTRACT: bus.Subscribe sets this signature.
+func Handle(v any) { ... }
+```
+
+This is the one place where a rule of this set reads a marker word.
+The examples of this document keep `CONTRACT:` in plain comments as a
+convention that a reader can search for, and nothing requires it
+there. A function
 declaration, a method, an interface method, and a field start on that
 line. Where the signature sits inside an expression that spans lines,
 the comment sits above the statement or the variable declaration.

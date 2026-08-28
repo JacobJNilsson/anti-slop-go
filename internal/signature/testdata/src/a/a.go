@@ -27,9 +27,11 @@ func Defined(v Payload) {}
 func Clean(name string) {}
 
 // A group holds two parameters, and the probe reports the field once.
+
 func Group(first, second any) {} // want `parameter uses the empty interface`
 
 // An unnamed parameter is one parameter.
+
 func Unnamed(any) {} // want `parameter uses the empty interface`
 
 // CONTRACT: an external API sets this signature.
@@ -45,26 +47,26 @@ func (store) Handle(v any) {}
 
 func Detached(v any) {} // want `parameter uses the empty interface`
 
-// contract: the marker is case sensitive.
-func Lowercase(v any) {} // want `parameter uses the empty interface`
+// Documented is the doc comment of this function. The name starts the
+// text, so the comment documents and justifies nothing.
+func Documented(v any) {} // want `parameter uses the empty interface`
 
-// NOT-CONTRACT: a hyphen is no line start, so this text is no marker.
-func Prefixed(v any) {} // want `parameter uses the empty interface`
+// A DocumentedWithAnArticle function with an article before its name is
+// documented as well.
+func DocumentedWithAnArticle(v any) {} // want `parameter uses the empty interface`
 
-// The word CONTRACT: here sits inside a sentence, so it is no marker.
-func InsideASentence(v any) {} // want `parameter uses the empty interface`
+// DocumentedWithAContractLine is documented, and a line of the doc
+// comment carries the marker, so the comment justifies.
+// CONTRACT: an external API sets this signature.
+func DocumentedWithAContractLine(v any) {}
 
-// An external API sets this signature.
-// CONTRACT: the marker may start any line of the comment group.
-func SecondLine(v any) {}
+// An external API sets this signature, in words without a marker.
+func PlainComment(v any) {}
 
 /*
- * CONTRACT: a gutter of stars keeps the marker at the line start.
+ * An external API sets this signature, in a block comment.
  */
 func StarGutter(v any) {}
-
-// - CONTRACT: a dash is no line start, so this item is no marker.
-func ListItem(v any) {} // want `parameter uses the empty interface`
 
 var trailing = 1 // CONTRACT: this comment trails code, so it justifies nothing.
 func TrailingAbove(v any) {} // want `parameter uses the empty interface`

@@ -33,9 +33,10 @@ declares with the same result, such as Value(key any) any of
 context.Context, because the receiver must satisfy the whole interface.
 
 Every other external contract needs a justification: a comment that
-matches CONTRACT: and names the API which sets the signature, directly
-above the declaration. sync.Pool.New is such an API. The analyzer
-cannot judge the text; review must.
+names the API which sets the signature, directly above the declaration.
+sync.Pool.New is such an API. A doc comment, whose text starts with the
+name of the declaration, justifies nothing, unless a line of it starts
+with CONTRACT:. The analyzer cannot judge the text; review must.
 
 The analyzer skips generated files.`
 
@@ -49,7 +50,8 @@ var Analyzer = &analysis.Analyzer{
 	Run:      run,
 }
 
-const advice = "return a concrete type"
+const advice = "return a concrete type" +
+	", or name the API that sets the signature in a comment directly above the declaration"
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
 func run(pass *analysis.Pass) (any, error) {

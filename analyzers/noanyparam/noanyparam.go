@@ -39,8 +39,10 @@ parameter keeps that parameter, because the receiver must satisfy the
 whole interface.
 
 Every other external contract needs a justification: a comment that
-matches CONTRACT: and names the API which sets the signature, directly
-above the declaration. The analyzer cannot judge the text; review must.
+names the API which sets the signature, directly above the declaration.
+A doc comment, whose text starts with the name of the declaration,
+justifies nothing, unless a line of it starts with CONTRACT:. The
+analyzer cannot judge the text; review must.
 
 The analyzer skips generated files.`
 
@@ -55,7 +57,8 @@ var Analyzer = &analysis.Analyzer{
 	Run:      run,
 }
 
-const advice = "accept a named domain type"
+const advice = "accept a named domain type" +
+	", or name the API that sets the signature in a comment directly above the declaration"
 
 // causeName is the parameter name of the upstream error-wrapping
 // helper. The analyzer cannot read intent, so the name is the contract.

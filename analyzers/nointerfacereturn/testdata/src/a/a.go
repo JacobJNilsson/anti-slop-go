@@ -47,22 +47,28 @@ func (closeError) Error() string { return "closed" }
 func (closeError) Path() string { return "/" }
 
 // One concrete type through every path, in an exported function.
+
 func NewStore() Storage { return &fileStore{} } // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 
 // An unexported function carries the same proof.
+
 func newStore() Storage { return fileStore{} } // want `result uses Storage, and every return builds fileStore; return the concrete type`
 
 // An alias is the same type.
+
 func NewAlias() Alias { return &fileStore{} } // want `result uses Alias, and every return builds \*fileStore; return the concrete type`
 
 // A defined interface with no method is a domain type, and the rule
 // judges it.
+
 func NewEmpty() Empty { return &fileStore{} } // want `result uses Empty, and every return builds \*fileStore; return the concrete type`
 
 // An interface that embeds error is another type than error.
+
 func Closed() CloseError { return closeError{} } // want `result uses CloseError, and every return builds closeError; return the concrete type`
 
 // A local variable carries the proof as well as a composite literal.
+
 func BuildStore() Storage { // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 	s := &fileStore{}
 
@@ -71,6 +77,7 @@ func BuildStore() Storage { // want `result uses Storage, and every return build
 
 // The constructor shape: one concrete type, and nil beside an error.
 // The caller sees one concrete type or nil, so the proof holds.
+
 func OpenStore(name string) (Storage, error) { // want `result uses Storage, and every return builds \*fileStore or nil; return the concrete type`
 	if name == "" {
 		return nil, errors.New("open: no name")
@@ -100,6 +107,7 @@ func Reopen(name string) (Storage, error) { return OpenStore(name) }
 func openFile(name string) (*fileStore, error) { return &fileStore{}, nil }
 
 // A call with several results carries the proof in its tuple.
+
 func OpenAgain(name string) (Storage, error) { // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 	return openFile(name)
 }
@@ -108,6 +116,7 @@ func splitFile(name string) (int, *fileStore) { return len(name), &fileStore{} }
 
 // The tuple carries a type for each result, so the rule reads the one
 // it judges.
+
 func SplitStore(name string) (int, Storage) { // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 	return splitFile(name)
 }
@@ -131,18 +140,22 @@ func Named() (s Storage) {
 }
 
 // The same function with the value in the return statement proves it.
+
 func NamedExplicit() (s Storage) { return &fileStore{} } // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 
 // Go groups names, so this signature holds two results. Both results
 // give one message at one position, and the reader needs it once.
+
 func Group() (first, second Storage) { return &fileStore{}, &fileStore{} } // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 
 // The results of a group can build two types. The two messages differ,
 // so the reader gets both.
+
 func Split() (first, second Storage) { return &fileStore{}, memStore{} } // want `result uses Storage, and every return builds \*fileStore; return the concrete type` `result uses Storage, and every return builds memStore; return the concrete type`
 
 // The rule judges each result position on its own. Position one holds
 // two concrete types and stays clean; position two holds one.
+
 func Mixed(mem bool) (
 	Storage,
 	b.Item, // want `result uses b.Item, and every return builds item; return the concrete type`
@@ -160,6 +173,7 @@ var Build = func() Storage { return &fileStore{} }
 
 // The return of a nested literal belongs to that literal. The rule
 // reads the returns of this body only, so the proof holds here.
+
 func Outer() Storage { // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 	inner := func() Storage { return memStore{} }
 	_ = inner
@@ -180,6 +194,7 @@ func (h holder[T]) Get() T { return h.v }
 func Boxed[T any](v T) Holder[T] { return holder[T]{v} }
 
 // Every other result of a generic function follows the rule.
+
 func Keep[T any](v T) Storage { return &fileStore{} } // want `result uses Storage, and every return builds \*fileStore; return the concrete type`
 
 // The error result is exempt. Go returns errors through the interface.

@@ -54,8 +54,10 @@ result no longer satisfies that interface, and the package stops
 compiling. Advice that does not build is no advice.
 
 Every other external contract needs a justification: a comment that
-matches CONTRACT: directly above the declaration. The analyzer cannot
-judge the text; review must.
+names the API which sets the signature, directly above the declaration.
+A doc comment, whose text starts with the name of the declaration,
+justifies nothing, unless a line of it starts with CONTRACT:. The
+analyzer cannot judge the text; review must.
 
 Go groups names, so one result field can hold several results. Every
 report of a field sits at the type it shares, and two results that
@@ -74,7 +76,8 @@ var Analyzer = &analysis.Analyzer{
 	Run:      run,
 }
 
-const advice = "return the concrete type"
+const advice = "return the concrete type" +
+	", or name the API that sets the signature in a comment directly above the declaration"
 
 // errorType is the predeclared error interface. The universe holds one
 // object for it, and every use of the name error names that object.

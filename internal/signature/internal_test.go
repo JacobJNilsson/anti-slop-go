@@ -47,7 +47,7 @@ func TestCommentAboveReadsTheOwnLineTestFromTheSource(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pass := &analysis.Pass{Fset: fset, Files: []*ast.File{file}, ReadFile: tt.readFile}
-			got := NewMarkedJustifications(pass, contractMarker).CommentAbove(file.FileStart, []int{declaration})
+			got := NewJustifications(pass).CommentAbove(file.FileStart, []int{declaration})
 			if got != tt.want {
 				t.Errorf("CommentAbove = %v, want %v", got, tt.want)
 			}
@@ -87,55 +87,66 @@ func TestCommentAboveWithoutAMarkerAcceptsAnyText(t *testing.T) {
 	}
 }
 
-// TestMarkerNeedsTheMarkerAtTheStartOfALine pins the marker contract
-// against the text that go/ast gives the analyzer.
-// ast.CommentGroup.Text removes the comment markers and the first space
-// of a line comment. It keeps the rest of the leading text of a line.
-// The expression must therefore accept the space of a block comment and
-// the star of a block gutter.
-func TestMarkerNeedsTheMarkerAtTheStartOfALine(t *testing.T) {
+// TestIsDocCommentReadsTheShapeOfADocComment pins the test that keeps
+// a doc comment from justifying a signature. Go states the shape: the
+// text starts with the name of the declaration, after an optional
+// article. The input is the text that ast.CommentGroup.Text returns.
+func TestIsDocCommentReadsTheShapeOfADocComment(t *testing.T) {
+	names := map[string]bool{"Handle": true, "handler": true}
 	tests := []struct {
 		name    string
 		comment string
 		want    bool
 	}{
-		{"a line comment", "// SAFETY: the loader checks the payload.", true},
-		{"no space after the slashes", "//SAFETY: the loader checks the payload.", true},
-		{"more spaces after the slashes", "//    SAFETY: the loader checks the payload.", true},
-		{"a space before the colon", "/* SAFETY : the loader checks the payload. */", true},
-		{"a block gutter of stars", "/*\n * SAFETY: the loader checks the payload.\n */", true},
-		{"the second line of a group", "// The loader checks the payload.\n// SAFETY: only T values arrive.", true},
-		{"a prefix before the marker", "// NOT-SAFETY: a hyphen is no line start.", false},
-		{"the marker inside a sentence", "// The word SAFETY: here sits inside a sentence.", false},
-		{"no colon", "// SAFETY needs a colon.", false},
-		{"a lowercase marker", "// safety: the marker is case sensitive.", false},
+		{"the name first", "// Handle processes one event.", true},
+		{"an article before the name", "// A Handle processes one event.", true},
+		{"the article The", "// The Handle processes one event.", true},
+		{"punctuation after the name", "// Handle: processes one event.", true},
+		{"a second name of the group", "// handler holds the callback.", true},
+		{"a block comment", "/* Handle processes one event. */", true},
+		{"a block gutter of stars", "/*\n * Handle processes one event.\n */", true},
+		{"another first word", "// bus.Subscribe sets this signature.", false},
+		{"the name inside a sentence", "// The bus calls Handle with any value.", false},
+		{"a lowercase form of the name", "// handle processes one event.", false},
+		{"a longer word with the name as prefix", "// Handlers process events.", false},
+		{"an article alone", "// A", false},
+		{"no text", "//", false},
 	}
-	marker := markerExpr("SAFETY")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			text := commentText(t, tt.comment)
-			if got := marker.MatchString(text); got != tt.want {
-				t.Errorf("match of %q = %v, want %v", text, got, tt.want)
+			if got := isDocComment(commentText(t, tt.comment), names); got != tt.want {
+				t.Errorf("isDocComment = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestMarkerQuotesTheMarkerWord pins the quote of the marker word. The
-// word goes into a regular expression, so an unquoted character with a
-// meaning there would match text that holds no marker.
-func TestMarkerQuotesTheMarkerWord(t *testing.T) {
-	marker := markerExpr("A.C")
-	if marker.MatchString("ABC: the text holds no marker.\n") {
-		t.Error("the marker matched text that does not hold the marker word")
+// TestContractMarkerStartsALine pins the one place where the signature
+// rules still read a marker: inside a doc comment.
+func TestContractMarkerStartsALine(t *testing.T) {
+	tests := []struct {
+		name    string
+		comment string
+		want    bool
+	}{
+		{"the second line of a doc comment", "// Handle processes one event.\n// CONTRACT: bus.Subscribe sets this signature.", true},
+		{"a space before the colon", "/* CONTRACT : bus.Subscribe sets this signature. */", true},
+		{"a block gutter of stars", "/*\n * CONTRACT: bus.Subscribe sets this signature.\n */", true},
+		{"a prefix before the marker", "// NOT-CONTRACT: a hyphen is no line start.", false},
+		{"the marker inside a sentence", "// The word CONTRACT: here sits inside a sentence.", false},
+		{"a lowercase marker", "// contract: the marker is case sensitive.", false},
 	}
-	if !marker.MatchString("A.C: the text holds the marker.\n") {
-		t.Error("the marker did not match its own word")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := contractMarker.MatchString(commentText(t, tt.comment)); got != tt.want {
+				t.Errorf("match = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
 // commentText returns the text that go/ast reports for one comment
-// group, so the test asserts against the real input of the marker.
+// group, so a test asserts against the real input of the test.
 func commentText(t *testing.T, comment string) string {
 	t.Helper()
 	src := "package p\n\n" + comment + "\nvar x = 1\n"
