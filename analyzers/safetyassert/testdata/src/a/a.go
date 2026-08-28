@@ -21,12 +21,12 @@ func identity(v any) any { return v }
 // line above the assertion of b.go, and it justifies nothing there.
 
 func CrossFileFromA(x any) {
-	a := x.(T) // want "no SAFETY justification"
+	a := x.(T) // want "no justification comment"
 	_ = a
 }
 
 func Bare(x any) {
-	a := x.(T) // want "type assertion has no SAFETY justification; state the checked invariant in a SAFETY: comment directly above it, or use the comma-ok form"
+	a := x.(T) // want "type assertion has no justification comment; state the checked invariant in a comment directly above it, or use the comma-ok form"
 	_ = a
 }
 
@@ -59,20 +59,20 @@ func TypeSwitch(x any) {
 }
 
 func BlankAssign(x any) {
-	_ = x.(T) // want "no SAFETY justification"
+	_ = x.(T) // want "no justification comment"
 }
 
 func CallArgument(x any) {
-	consume(x.(T)) // want "no SAFETY justification"
+	consume(x.(T)) // want "no justification comment"
 }
 
 func VarSpec(x any) {
-	var a = x.(T) // want "no SAFETY justification"
+	var a = x.(T) // want "no justification comment"
 	_ = a
 }
 
 func TypedVarSpec(x any) {
-	var a T = x.(T) // want "no SAFETY justification"
+	var a T = x.(T) // want "no justification comment"
 	_ = a
 }
 
@@ -103,7 +103,7 @@ func SafetyAboveAMultiStatementCaseClause(x any, kind int) {
 	// SAFETY: the caller pairs kind 1 with a T value.
 	case 1:
 		first := x.(T)
-		later := x.(T) // want "no SAFETY justification"
+		later := x.(T) // want "no justification comment"
 		consume(first)
 		consume(later)
 	}
@@ -114,14 +114,14 @@ func SafetyAboveAMultiStatementCommClause(x any, ch chan int) {
 	// SAFETY: the caller fills ch after it stores a T value.
 	case <-ch:
 		first := x.(T)
-		later := x.(T) // want "no SAFETY justification"
+		later := x.(T) // want "no justification comment"
 		consume(first)
 		consume(later)
 	}
 }
 
 func ChainedAssertions(x any) {
-	a := x.(A).(T) // want "no SAFETY justification" "no SAFETY justification"
+	a := x.(A).(T) // want "no justification comment" "no justification comment"
 	_ = a
 }
 
@@ -159,55 +159,44 @@ func SafetyInABlockWithAStarGutter(x any) {
 	_ = a
 }
 
-func MarkerWithAPrefix(x any) {
-	// NOT-SAFETY: a hyphen is no line start, so this text is no marker.
-	a := x.(T) // want "no SAFETY justification"
+func PlainCommentAboveTheAssertion(x any) {
+	// Only T values reach this function. The text carries no marker
+	// word, and the rule accepts it.
+	a := x.(T)
 	_ = a
 }
 
-func MarkerInsideASentence(x any) {
-	// The word SAFETY: here sits inside a sentence, so it is no marker.
-	a := x.(T) // want "no SAFETY justification"
-	_ = a
-}
-
-func MarkerInAListItem(x any) {
-	// - SAFETY: a dash is no line start, so this item is no marker.
-	a := x.(T) // want "no SAFETY justification"
-	_ = a
-}
-
-func MarkerWithoutAColon(x any) {
-	// SAFETY needs a colon, so this text is not a justification.
-	a := x.(T) // want "no SAFETY justification"
+func PlainCommentInAListItem(x any) {
+	// - only T values reach this function.
+	a := x.(T)
 	_ = a
 }
 
 func BlankLineBelowTheComment(x any) {
 	// SAFETY: a blank line breaks the link to the statement.
 
-	a := x.(T) // want "no SAFETY justification"
+	a := x.(T) // want "no justification comment"
 	_ = a
 }
 
 func SafetyTrailingThePreviousStatement(x any) {
 	consume(T{}) // SAFETY: this comment trails the statement beside it.
-	a := x.(T)   // want "no SAFETY justification"
+	a := x.(T)   // want "no justification comment"
 	_ = a
 }
 
 func SafetyOnTheSameLine(x any) {
-	a := x.(T) // SAFETY: a trailing comment is not above the assertion. // want "no SAFETY justification"
+	a := x.(T) // SAFETY: a trailing comment is not above the assertion. // want "no justification comment"
 	_ = a
 }
 
 func ParenthesizedOperand(x any) {
-	a := (x).(T) // want "no SAFETY justification"
+	a := (x).(T) // want "no justification comment"
 	_ = a
 }
 
 func ParenthesizedAssertion(x any) {
-	a := (x.(T)) // want "no SAFETY justification"
+	a := (x.(T)) // want "no justification comment"
 	_ = a
 }
 
@@ -220,7 +209,7 @@ func SafetyAboveAParenthesizedOperand(x any) {
 func MultiLineOperand(x any) {
 	a := identity(
 		x,
-	).(T) // want "no SAFETY justification"
+	).(T) // want "no justification comment"
 	_ = a
 }
 
@@ -235,19 +224,19 @@ func SafetyAboveTheAssertionOfAMultiLineOperand(x any) {
 func SafetyInsideAFuncLiteral(x any) {
 	// SAFETY: this comment justifies the go statement, not the body.
 	go func() {
-		a := x.(T) // want "no SAFETY justification"
+		a := x.(T) // want "no justification comment"
 		_ = a
 	}()
 }
 
-var packageLevelBare = store.(T) // want "no SAFETY justification"
+var packageLevelBare = store.(T) // want "no justification comment"
 
 // SAFETY: init seeds store with a T value.
 var packageLevelJustified = store.(T)
 
 // SAFETY: this comment sits above the block, not above a spec of it.
 var (
-	blockScopedBare = store.(T) // want "no SAFETY justification"
+	blockScopedBare = store.(T) // want "no justification comment"
 
 	// SAFETY: init seeds store with a T value.
 	blockScopedJustified = store.(T)

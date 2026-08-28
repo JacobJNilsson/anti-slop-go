@@ -1,6 +1,6 @@
 // Package safetyassert implements rule G01 of the anti-slop rule set:
-// a single-result type assertion must carry a SAFETY comment that states
-// the invariant which makes the panic unreachable.
+// a single-result type assertion must carry a comment that states the
+// invariant which makes the panic unreachable.
 package safetyassert
 
 import (
@@ -15,17 +15,17 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
-const doc = `require a SAFETY comment for panicking type assertions
+const doc = `require a comment for panicking type assertions
 
 A single-result type assertion v.(T) panics when the value is not a T.
 The author must state the invariant that makes the panic unreachable, in
 a comment that sits directly above the assertion or above the statement
-that contains it. The marker SAFETY: must start a line of that comment.
-The comma-ok form is checked code and needs no comment. The rule skips
+that contains it. The comment must own its line. Any text counts. The
+comma-ok form is checked code and needs no comment. The rule skips
 generated files.`
 
-// Analyzer reports single-result type assertions that carry no SAFETY
-// justification. It implements rule G01; see docs/spec/002-rules.md.
+// Analyzer reports single-result type assertions that carry no
+// justification comment. It implements rule G01; see docs/spec/002-rules.md.
 var Analyzer = &analysis.Analyzer{
 	Name:     "safetyassert",
 	Doc:      doc,
@@ -35,8 +35,8 @@ var Analyzer = &analysis.Analyzer{
 
 // message is the single diagnostic this rule emits. It names the problem
 // and both fixes.
-const message = "type assertion has no SAFETY justification; " +
-	"state the checked invariant in a SAFETY: comment directly above it, " +
+const message = "type assertion has no justification comment; " +
+	"state the checked invariant in a comment directly above it, " +
 	"or use the comma-ok form"
 
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
@@ -45,7 +45,7 @@ func run(pass *analysis.Pass) (any, error) {
 	// result type in ResultOf before it calls this function.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	justifications := signature.NewMarkedJustifications(pass, "SAFETY")
+	justifications := signature.NewJustifications(pass)
 
 	insp.WithStack([]ast.Node{(*ast.TypeAssertExpr)(nil)}, func(n ast.Node, push bool, stack []ast.Node) bool {
 		if !push {
@@ -76,7 +76,7 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// candidateLines returns the lines a SAFETY comment may end directly
+// candidateLines returns the lines a justification comment may end directly
 // above: the line of the assertion, the line of its .( token for a
 // multi-line operand, and the lines of the statements that contain it.
 //

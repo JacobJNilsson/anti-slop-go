@@ -13,7 +13,7 @@ A type assertion with no stated invariant, an `any` parameter, or a
 `map[string]any` field moves a proof obligation from the author to the
 reader. These rules reject such patterns. The author must decode input
 at its I/O boundary, keep concrete types inside the program, and write
-a `// SAFETY:` justification where an assertion is the correct tool.
+a justification comment where an assertion is the correct tool.
 
 ## The rules
 
@@ -21,7 +21,7 @@ Eight rules run by default.
 
 | ID | Rule | Reports |
 | --- | --- | --- |
-| G01 | `safetyassert` | A panicking type assertion without a `SAFETY:` comment above it. |
+| G01 | `safetyassert` | A panicking type assertion without a justification comment above it. |
 | G02 | `nountypedmap` | A map with an `any` value type in a signature, a struct field, or a package variable. |
 | G04 | `noanyreturn` | An `any` result. |
 | G05 | `nolaundering` | A value that passes through `any` and comes back through an assertion. |

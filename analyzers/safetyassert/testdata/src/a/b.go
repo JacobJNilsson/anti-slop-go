@@ -19,7 +19,7 @@ package a
 
 func CrossFileFromB(x any) {
 
-	a := x.(T) // want "no SAFETY justification"
+	a := x.(T) // want "no justification comment"
 	// SAFETY: this marker belongs to b.go alone. It ends on line 23.
 	_ = a
 }
