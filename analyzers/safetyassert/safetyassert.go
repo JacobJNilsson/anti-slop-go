@@ -39,18 +39,13 @@ const message = "type assertion has no SAFETY justification; " +
 	"state the checked invariant in a SAFETY: comment directly above it, " +
 	"or use the comma-ok form"
 
-// safetyMarker is the marker word of rule G01. Package signature holds
-// the contract that the three markers of
-// docs/spec/003-implementation.md share.
-const safetyMarker = "SAFETY"
-
 // CONTRACT: analysis.Analyzer.Run fixes this signature.
 func run(pass *analysis.Pass) (any, error) {
 	// SAFETY: inspect.Analyzer is in Requires, so the driver puts its
 	// result type in ResultOf before it calls this function.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	justifications := signature.NewJustifications(pass, safetyMarker)
+	justifications := signature.NewMarkedJustifications(pass, "SAFETY")
 
 	insp.WithStack([]ast.Node{(*ast.TypeAssertExpr)(nil)}, func(n ast.Node, push bool, stack []ast.Node) bool {
 		if !push {
@@ -69,7 +64,7 @@ func run(pass *analysis.Pass) (any, error) {
 		if justifications.Generated(assert.Pos()) {
 			return true
 		}
-		if justifications.MarkedAbove(assert.Pos(), candidateLines(pass.Fset, assert, stack)) {
+		if justifications.CommentAbove(assert.Pos(), candidateLines(pass.Fset, assert, stack)) {
 			return true
 		}
 		// Report at the .( token, not at the start of the operand: in a

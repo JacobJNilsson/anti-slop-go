@@ -10,8 +10,8 @@ import (
 )
 
 // markerExpr returns the expression that matches one justification
-// marker. The name is the marker word, such as "SAFETY". The expression
-// follows the justification comment contract of
+// marker. The name is the marker word, such as "CONTRACT". The
+// expression follows the justification comment contract of
 // docs/spec/003-implementation.md, and it is the only place that states
 // the contract: every rule with a marker gets its expression here.
 //
@@ -30,12 +30,13 @@ func markerExpr(name string) *regexp.Regexp {
 }
 
 // Justifications answers, for one analysis pass, whether the author
-// wrote a justification comment above a line. One pass and one marker
-// give one instance. The markers of
-// docs/spec/003-implementation.md share every test below; only the
-// marker itself changes, so the rules cannot drift apart.
+// wrote a justification comment above a line. Every rule with a
+// justification of docs/spec/003-implementation.md shares the tests
+// below, so the rules cannot drift apart.
 type Justifications struct {
-	pass      *analysis.Pass
+	pass *analysis.Pass
+	// marker is nil when any comment justifies. A rule with a marker
+	// word accepts a comment that carries it only.
 	marker    *regexp.Regexp
 	generated func(pos token.Pos) bool
 	// comments is nil until the first justification test. Most packages
@@ -43,29 +44,38 @@ type Justifications struct {
 	comments *commentIndex
 }
 
-// NewJustifications prepares the marker tests for one pass. The marker
-// is the marker word of the rule, such as "SAFETY". The constructor
-// builds the expression, so no rule can write its own.
-func NewJustifications(pass *analysis.Pass, marker string) *Justifications {
+// NewJustifications prepares the justification tests for one pass. Any
+// comment that owns its line justifies the code below it.
+func NewJustifications(pass *analysis.Pass) *Justifications {
+	return &Justifications{pass: pass, generated: GeneratedFiles(pass)}
+}
+
+// NewMarkedJustifications prepares the justification tests for one
+// pass and one marker word, such as "CONTRACT". Only a comment that
+// carries the marker justifies. The constructor builds the expression,
+// so no rule can write its own.
+func NewMarkedJustifications(pass *analysis.Pass, marker string) *Justifications {
 	return &Justifications{pass: pass, marker: markerExpr(marker), generated: GeneratedFiles(pass)}
 }
 
 // Generated reports whether pos sits in a generated file. It runs the
-// test of GeneratedFiles, so a rule with a marker needs one value only.
+// test of GeneratedFiles, so a rule with a justification needs one
+// value only.
 func (j *Justifications) Generated(pos token.Pos) bool {
 	return j.generated(pos)
 }
 
-// MarkedAbove reports whether a justification comment ends on the line
-// directly above one of lines, in the file that holds pos. The comment
-// must own its line: a comment beside code justifies the code beside
-// it, never the line below. The analyzer cannot judge the text of the
+// CommentAbove reports whether a justification comment ends on the
+// line directly above one of lines, in the file that holds pos. The
+// comment must own its line: a comment beside code justifies the code
+// beside it, never the line below. Where the rule has a marker, the
+// comment must carry it. The analyzer cannot judge the text of the
 // comment; review must.
-func (j *Justifications) MarkedAbove(pos token.Pos, lines []int) bool {
+func (j *Justifications) CommentAbove(pos token.Pos, lines []int) bool {
 	if j.comments == nil {
 		j.comments = newCommentIndex(j.pass)
 	}
-	return j.comments.markedAbove(j.pass.Fset.File(pos), lines, j.marker)
+	return j.comments.commentAbove(j.pass.Fset.File(pos), lines, j.marker)
 }
 
 // LineOf returns the physical line of a position. It ignores //line
@@ -94,7 +104,7 @@ func LineOf(fset *token.FileSet, pos token.Pos) int {
 //
 // This walk is the placement rule of the justification contract of
 // docs/spec/003-implementation.md. One implementation serves every
-// marker, so the rules cannot drift apart. A rule adds the candidate
+// rule, so the rules cannot drift apart. A rule adds the candidate
 // lines of its own shape, such as the line of a token that a
 // multi-line operand pushes down.
 func EnclosingStmtLines(fset *token.FileSet, stack []ast.Node) []int {
@@ -185,13 +195,16 @@ func newCommentIndex(pass *analysis.Pass) *commentIndex {
 	return index
 }
 
-// markedAbove reports whether a whole-line comment that carries the
-// marker ends on the line directly above one of lines.
-func (ci *commentIndex) markedAbove(file *token.File, lines []int, marker *regexp.Regexp) bool {
+// commentAbove reports whether a whole-line comment ends on the line
+// directly above one of lines. A nil marker accepts any text.
+func (ci *commentIndex) commentAbove(file *token.File, lines []int, marker *regexp.Regexp) bool {
 	byLine := ci.byFile[file]
 	for _, line := range lines {
 		for _, group := range byLine[line-1] {
-			if ci.ownLine[group] && marker.MatchString(group.Text()) {
+			if !ci.ownLine[group] {
+				continue
+			}
+			if marker == nil || marker.MatchString(group.Text()) {
 				return true
 			}
 		}

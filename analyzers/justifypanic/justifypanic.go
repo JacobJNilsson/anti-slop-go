@@ -86,11 +86,6 @@ const message = "%s in library code has no PANICS justification; " +
 	"state why the process cannot continue in a PANICS: comment directly above it, " +
 	"or return an error to the caller"
 
-// panicsMarker is the marker word of rule G11. Package signature holds
-// the contract that the three markers of
-// docs/spec/003-implementation.md share.
-const panicsMarker = "PANICS"
-
 // builtinPanic is the name of the builtin that raises a panic. The
 // rethrow exemption reads it: log.Fatal and os.Exit raise nothing, so
 // no call of them re-raises a recovered value.
@@ -114,7 +109,7 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 	// result type in ResultOf before it calls this function.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	justifications := signature.NewJustifications(pass, panicsMarker)
+	justifications := signature.NewMarkedJustifications(pass, "PANICS")
 	testFile := signature.TestFiles(pass, c.testPackages)
 
 	insp.WithStack([]ast.Node{(*ast.CallExpr)(nil)}, func(n ast.Node, push bool, stack []ast.Node) bool {
@@ -136,7 +131,7 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 		if name == builtinPanic && rethrows(pass.TypesInfo, call, stack) {
 			return true
 		}
-		if justifications.MarkedAbove(call.Pos(), candidateLines(pass.Fset, call, stack)) {
+		if justifications.CommentAbove(call.Pos(), candidateLines(pass.Fset, call, stack)) {
 			return true
 		}
 		// The report sits at the call and not at the statement. A

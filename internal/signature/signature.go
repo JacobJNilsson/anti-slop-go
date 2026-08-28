@@ -5,7 +5,7 @@
 // signature, and both accept the empty interface where an external API
 // sets the shape. The file justify.go holds the justification comment
 // contract of docs/spec/003-implementation.md, which every rule with a
-// marker uses, and the generated-file test that every rule uses.
+// justification uses, and the generated-file test that every rule uses.
 //
 // The rules stay in their own analyzer packages; only the shared
 // machinery lives here. One implementation of a contract cannot drift
@@ -40,8 +40,9 @@ func NameCount(field *ast.Field) int {
 }
 
 // contractMarker is the marker of the justification comment for rules
-// G03 and G04. NewJustifications holds the contract that every marker
-// shares.
+// G03, G04, and G09. A signature rule keeps its marker: the doc
+// comment of a declaration sits on the same line as a justification
+// would, so any comment would justify every documented signature.
 const contractMarker = "CONTRACT"
 
 // Contracts answers, for one analysis pass, whether the author may keep
@@ -83,7 +84,7 @@ func NewContractsWithHome(pass *analysis.Pass) *Contracts {
 }
 
 func newContracts(pass *analysis.Pass, home bool) *Contracts {
-	return &Contracts{pass: pass, home: home, justifications: NewJustifications(pass, contractMarker)}
+	return &Contracts{pass: pass, home: home, justifications: NewMarkedJustifications(pass, contractMarker)}
 }
 
 // Generated reports whether pos sits in a generated file. Both rules
@@ -100,7 +101,7 @@ func (c *Contracts) Generated(pos token.Pos) bool {
 // holds it. The analyzer cannot judge the text; review must.
 func (c *Contracts) Justified(stack []ast.Node) bool {
 	pos := stack[len(stack)-1].Pos()
-	return c.justifications.MarkedAbove(pos, justifyLines(c.pass.Fset, stack))
+	return c.justifications.CommentAbove(pos, justifyLines(c.pass.Fset, stack))
 }
 
 // Implements reports whether an exported interface of a directly
