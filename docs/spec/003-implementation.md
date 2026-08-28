@@ -391,16 +391,17 @@ signature rules G03, G04, and G09.
 - G01 and G11 read no marker word. Any text counts. The examples of 002
   keep `SAFETY:` and `PANICS:` as a convention that a reader can search
   for, and nothing requires them.
-- G03, G04, and G09 accept a comment that carries the marker
-  `CONTRACT:` only. This is unfortunate. A marker is a vocabulary of
-  this linter, and the project wants none. The three rules keep it
-  because the doc comment of a declaration sits on the line where a
-  justification would sit, so any text would justify every documented
-  signature, and the rules would stop reporting most exported API. A
-  later version may find a test that tells a doc comment from a
-  justification without a marker. The marker starts a line of the
-  comment text.
-  It matches the regular expression `(?m)^[\s*]*CONTRACT\s*:`, on any
+- G03, G04, and G09 read no marker word in a plain comment, and they
+  read a doc comment as documentation, never as a justification. The
+  doc comment of a declaration sits on the line where a justification
+  would sit, so a test that accepted any text would exempt every
+  documented signature. Go states the shape of a doc comment: the text
+  starts with the name of the declaration, after an optional article
+  (`A`, `An`, `The`). The name is the name of the function, the type,
+  the variable, or the field. A comment of another shape justifies.
+- A doc comment justifies when a line of it starts with the marker
+  `CONTRACT:`. This is the one marker the rule set keeps. The marker
+  matches the regular expression `(?m)^[\s*]*CONTRACT\s*:`, on any
   line of the group. A marker inside a sentence counts for nothing, and
   so does a marker with a prefix. `NOT-CONTRACT:` is no justification.
 - The text of the comment must state the invariant, the reason to stop
@@ -414,11 +415,10 @@ comment may start with a space, and a gutter of stars stays. The class
 before the marker accepts both.
 
 One implementation enforces this contract for every rule.
-`internal/signature.NewJustifications` prepares the tests of a rule
-that reads no marker, and `NewMarkedJustifications` takes the marker
-word and builds the expression. The `Justifications` value they return
-runs the position tests. A rule supplies its candidate lines, and
-nothing else.
+`internal/signature.NewJustifications` returns the `Justifications`
+value that runs the position tests. A rule supplies its candidate
+lines, and nothing else. `Contracts.Justified` adds the doc comment
+test of the signature rules on top of the same position tests.
 
 One implementation states the placement rule as well.
 `internal/signature.EnclosingStmtLines` walks the syntax stack and

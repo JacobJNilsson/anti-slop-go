@@ -50,8 +50,8 @@ test package.
 
 The second escape is the evidence that rule G03 accepts for an any
 parameter: an interface of an imported package declares the parameter,
-or a CONTRACT comment above the declaration names the API that sets the
-signature. Such a parameter is legal under G03, and the switch is the
+or a justification comment above the declaration names the API that
+sets the signature. Such a parameter is legal under G03, and the switch is the
 consumption of that contract. The signature that declares the parameter
 answers the question, so a function literal answers for its own
 parameter.

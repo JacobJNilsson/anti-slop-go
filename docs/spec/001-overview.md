@@ -99,7 +99,7 @@ them here:
   remaining four report different kinds of interface pollution. G09
   carries two things that `opaque` does not. The first is the exemption
   for an interface that the package under analysis declares, which a
-  scan measured at 101 findings of 378. The second is the `CONTRACT:`
+  scan measured at 101 findings of 378. The second is the comment
   escape for a signature that an external API fixes. Enable one, not
   both.
 - `errorlint` and `testifylint`: both read the error VALUE, and neither

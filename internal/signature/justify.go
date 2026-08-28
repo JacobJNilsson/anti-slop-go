@@ -4,40 +4,16 @@ import (
 	"go/ast"
 	"go/token"
 	"os"
-	"regexp"
 
 	"golang.org/x/tools/go/analysis"
 )
-
-// markerExpr returns the expression that matches one justification
-// marker. The name is the marker word, such as "CONTRACT". The
-// expression follows the justification comment contract of
-// docs/spec/003-implementation.md, and it is the only place that states
-// the contract: every rule with a marker gets its expression here.
-//
-// The marker must start a line of the comment text, on any line of the
-// group. A word boundary alone accepted "NOT-SAFETY:" and a marker in
-// the middle of a sentence. A hyphen and a space are both word
-// boundaries.
-//
-// The input is the text of ast.CommentGroup.Text. That method removes
-// the comment markers and the first space of a line comment. It keeps
-// the rest of the leading text of a line. A block comment may start
-// with a space, and a gutter of stars stays, so the class before the
-// name accepts both.
-func markerExpr(name string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[\s*]*` + regexp.QuoteMeta(name) + `\s*:`)
-}
 
 // Justifications answers, for one analysis pass, whether the author
 // wrote a justification comment above a line. Every rule with a
 // justification of docs/spec/003-implementation.md shares the tests
 // below, so the rules cannot drift apart.
 type Justifications struct {
-	pass *analysis.Pass
-	// marker is nil when any comment justifies. A rule with a marker
-	// word accepts a comment that carries it only.
-	marker    *regexp.Regexp
+	pass      *analysis.Pass
 	generated func(pos token.Pos) bool
 	// comments is nil until the first justification test. Most packages
 	// never need it, and building it reads every source file.
@@ -50,14 +26,6 @@ func NewJustifications(pass *analysis.Pass) *Justifications {
 	return &Justifications{pass: pass, generated: GeneratedFiles(pass)}
 }
 
-// NewMarkedJustifications prepares the justification tests for one
-// pass and one marker word, such as "CONTRACT". Only a comment that
-// carries the marker justifies. The constructor builds the expression,
-// so no rule can write its own.
-func NewMarkedJustifications(pass *analysis.Pass, marker string) *Justifications {
-	return &Justifications{pass: pass, marker: markerExpr(marker), generated: GeneratedFiles(pass)}
-}
-
 // Generated reports whether pos sits in a generated file. It runs the
 // test of GeneratedFiles, so a rule with a justification needs one
 // value only.
@@ -68,14 +36,22 @@ func (j *Justifications) Generated(pos token.Pos) bool {
 // CommentAbove reports whether a justification comment ends on the
 // line directly above one of lines, in the file that holds pos. The
 // comment must own its line: a comment beside code justifies the code
-// beside it, never the line below. Where the rule has a marker, the
-// comment must carry it. The analyzer cannot judge the text of the
-// comment; review must.
+// beside it, never the line below. Any text counts. The analyzer
+// cannot judge the text of the comment; review must.
 func (j *Justifications) CommentAbove(pos token.Pos, lines []int) bool {
+	return j.CommentAboveWhere(pos, lines, func(string) bool { return true })
+}
+
+// CommentAboveWhere is CommentAbove with a test of the comment text.
+// The text is the text of ast.CommentGroup.Text, with the comment
+// markers removed. A rule that must reject one kind of comment, such
+// as the doc comment of a declaration, passes the test here, so the
+// position tests stay in one place.
+func (j *Justifications) CommentAboveWhere(pos token.Pos, lines []int, accept func(text string) bool) bool {
 	if j.comments == nil {
 		j.comments = newCommentIndex(j.pass)
 	}
-	return j.comments.commentAbove(j.pass.Fset.File(pos), lines, j.marker)
+	return j.comments.commentAbove(j.pass.Fset.File(pos), lines, accept)
 }
 
 // LineOf returns the physical line of a position. It ignores //line
@@ -195,16 +171,13 @@ func newCommentIndex(pass *analysis.Pass) *commentIndex {
 	return index
 }
 
-// commentAbove reports whether a whole-line comment ends on the line
-// directly above one of lines. A nil marker accepts any text.
-func (ci *commentIndex) commentAbove(file *token.File, lines []int, marker *regexp.Regexp) bool {
+// commentAbove reports whether a whole-line comment that accept takes
+// ends on the line directly above one of lines.
+func (ci *commentIndex) commentAbove(file *token.File, lines []int, accept func(text string) bool) bool {
 	byLine := ci.byFile[file]
 	for _, line := range lines {
 		for _, group := range byLine[line-1] {
-			if !ci.ownLine[group] {
-				continue
-			}
-			if marker == nil || marker.MatchString(group.Text()) {
+			if ci.ownLine[group] && accept(group.Text()) {
 				return true
 			}
 		}

@@ -131,6 +131,7 @@ func (loner) Err() any { return nil } // want `result uses any; return a concret
 func (loner) Done() (any, any) { return nil, nil } // want `result uses any; return a concrete type` `result uses any; return a concrete type`
 
 // Box implements no imported interface, so its method is reported.
+
 func (bx *Box[T]) Get() any { return nil } // want `result uses any; return a concrete type`
 
 // genericCtx is a generic type that implements context.Context. The
@@ -204,7 +205,8 @@ func (source) Next() any { return nil }
 
 func Detached() any { return nil } // want `result uses any; return a concrete type`
 
-// contract: the marker is case sensitive.
+// Lowercase is the doc comment of this function. The name starts the
+// text, so the comment documents and justifies nothing.
 func Lowercase() any { return nil } // want `result uses any; return a concrete type`
 
 func SameLine() any { return nil } // CONTRACT: a comment beside the code justifies nothing // want `result uses any; return a concrete type`

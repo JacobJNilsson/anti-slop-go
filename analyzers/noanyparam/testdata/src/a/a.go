@@ -58,6 +58,7 @@ func Cause(cause any) error { return nil }
 
 // A group keeps the report, because only one of its names carries the
 // error-wrapping contract.
+
 func CauseGroup(cause, value any) error { return nil } // want `parameter uses any; accept a named domain type`
 
 // Errorf is an fmt-style helper: a format parameter controls the tail.
@@ -75,11 +76,13 @@ func Render(formatString string, args ...any) {}
 
 // A name that only holds "format" inside itself is not a format
 // parameter.
+
 func Notify(informationText string, args ...any) {} // want `parameter uses \.\.\.any; accept a named domain type`
 
 func Rewrite(reformatted string, args ...any) {} // want `parameter uses \.\.\.any; accept a named domain type`
 
 // The exemption covers the variadic tail only.
+
 func Wrapf(format string, v any) {} // want `parameter uses any; accept a named domain type`
 
 // Emit has no format evidence, so the tail is reported.
@@ -190,6 +193,7 @@ func (loner) Write(p any) (int, error) { return 0, nil } // want `parameter uses
 var _ io.Writer
 
 // Box implements no imported interface, so its method is reported.
+
 func (bx *Box[T]) Set(v any) {} // want `parameter uses any; accept a named domain type`
 
 // genericCtx is a generic type that implements context.Context. The
@@ -265,7 +269,8 @@ func (store) Handle(v any) {}
 
 func Detached(v any) {} // want `parameter uses any; accept a named domain type`
 
-// contract: the marker is case sensitive.
+// Lowercase is the doc comment of this function. The name starts the
+// text, so the comment documents and justifies nothing.
 func Lowercase(v any) {} // want `parameter uses any; accept a named domain type`
 
 func SameLine(v any) {} // CONTRACT: a comment beside the code justifies nothing // want `parameter uses any; accept a named domain type`

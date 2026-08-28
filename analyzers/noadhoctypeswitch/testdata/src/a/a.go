@@ -39,6 +39,7 @@ func Plain(v any) {
 }
 
 // The binding form asks the same question, so it gets the same report.
+
 func Binding(v any) int {
 	switch value := v.(type) { // want `this type switch reads the dynamic type of an any value`
 	case int:
@@ -52,6 +53,7 @@ func Binding(v any) int {
 
 // One switch gets one report, whatever the number of its cases. The
 // full message sits here, and the other fixtures name its first clause.
+
 func ManyCases(v any) string {
 	switch v.(type) { // want `^this type switch reads the dynamic type of an any value; branch on a domain value, or name a boundary package with boundary-packages \(-noadhoctypeswitch\.boundary\)$`
 	case int:
@@ -66,6 +68,7 @@ func ManyCases(v any) string {
 }
 
 // An init statement changes no question the guard asks.
+
 func WithInit(v any) int {
 	switch base := 1; value := v.(type) { // want `this type switch reads the dynamic type of an any value`
 	case int:
@@ -76,6 +79,7 @@ func WithInit(v any) int {
 }
 
 // Parentheses hold the same operand.
+
 func Parenthesized(v any) {
 	switch (v).(type) { // want `this type switch reads the dynamic type of an any value`
 	case int:
@@ -97,6 +101,7 @@ func MultiLineOperand(c chain) {
 }
 
 // An alias is the same type as the type it names.
+
 func AliasOperand(v Alias) {
 	switch v.(type) { // want `this type switch reads the dynamic type of an any value`
 	case int:
@@ -210,6 +215,7 @@ func (bx box) Kind() string {
 }
 
 // Each switch gets its own report.
+
 func Nested(outer, inner any) {
 	switch outer.(type) { // want `this type switch reads the dynamic type of an any value`
 	case int:
@@ -268,6 +274,7 @@ func ErrorAliasOperand(err ErrAlias) {
 // The name "cause" exempts a parameter under rule G03. It names no API
 // that sets the signature, so it is no evidence about the value and the
 // switch keeps its report.
+
 func Cause(cause any) {
 	switch cause.(type) { // want `this type switch reads the dynamic type of an any value`
 	case int:
@@ -320,9 +327,11 @@ func init() {
 // The justification belongs to the signature that admitted the any. A
 // comment above the switch justifies nothing, because the reader of the
 // signature never sees it.
+
 func CommentOnSwitch(v any) {
 	// CONTRACT: this comment sits above the statement and not above the
 	// signature that admitted the value.
+
 	switch v.(type) { // want `this type switch reads the dynamic type of an any value`
 	case int:
 	}
@@ -434,6 +443,7 @@ func capture(v any) func() {
 
 // The same shape without the comment keeps its report. Rule G03 reports
 // the signature, which is the line the author fixes.
+
 func Capture(v any) func() {
 	return func() {
 		switch v.(type) { // want `this type switch reads the dynamic type of an any value`
