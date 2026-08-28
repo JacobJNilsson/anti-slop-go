@@ -1,6 +1,6 @@
 // Package justifypanic implements rule G11 of the anti-slop rule set.
-// A call that stops the process in library code must carry a PANICS
-// comment. The comment states why the process cannot continue.
+// A call that stops the process in library code must carry a comment
+// that states why the process cannot continue.
 package justifypanic
 
 import (
@@ -18,13 +18,13 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/internal/signature"
 )
 
-const doc = `require a PANICS comment for panic in library code
+const doc = `require a comment for panic in library code
 
 A panic outside main, outside init, and outside a test file is an API
 decision. The author of a library stops the process of somebody else.
 That author must state why the process cannot continue, in a comment
 that sits directly above the call or above the statement that contains
-it. The marker PANICS: must start a line of that comment.
+it. The comment must own its line. Any text counts.
 
 The rule reads the object that the type checker resolved, and never a
 name. It reports the builtin panic, os.Exit, and the Fatal, Fatalf,
@@ -45,8 +45,8 @@ serves tests and carries no _test.go name, such as a shared suite,
 needs that entry. A pattern matches the whole import path, and 003
 states the syntax.`
 
-// Analyzer reports a call that stops the process and carries no PANICS
-// justification. It implements rule G11; see docs/spec/002-rules.md.
+// Analyzer reports a call that stops the process and carries no
+// justification comment. It implements rule G11; see docs/spec/002-rules.md.
 // The rule is opt-in, so the golangci-lint plugin runs it only when the
 // enable setting names it. Consumers get it through
 // antislop.Analyzers(), and cmd/antislop registers its flag.
@@ -82,8 +82,8 @@ type config struct {
 
 // message is the single diagnostic this rule emits. It names the call
 // that stops the process, the missing justification, and the two fixes.
-const message = "%s in library code has no PANICS justification; " +
-	"state why the process cannot continue in a PANICS: comment directly above it, " +
+const message = "%s in library code has no justification comment; " +
+	"state why the process cannot continue in a comment directly above it, " +
 	"or return an error to the caller"
 
 // builtinPanic is the name of the builtin that raises a panic. The
@@ -109,7 +109,7 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 	// result type in ResultOf before it calls this function.
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	justifications := signature.NewMarkedJustifications(pass, "PANICS")
+	justifications := signature.NewJustifications(pass)
 	testFile := signature.TestFiles(pass, c.testPackages)
 
 	insp.WithStack([]ast.Node{(*ast.CallExpr)(nil)}, func(n ast.Node, push bool, stack []ast.Node) bool {
@@ -323,7 +323,7 @@ func isRecover(info *types.Info, expr ast.Expr) bool {
 	return isBuiltin && builtin.Name() == "recover"
 }
 
-// candidateLines returns the lines a PANICS comment may end directly
+// candidateLines returns the lines a justification comment may end directly
 // above: the line of the call, and the lines of the statements that
 // contain it.
 //

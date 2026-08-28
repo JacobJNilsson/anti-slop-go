@@ -12,7 +12,7 @@ type Item struct{ Name string }
 // Rule G11 asks the author to state that decision.
 func Build(name string) Item {
 	if name == "" {
-		panic("the store needs a name") // want "panic in library code has no PANICS"
+		panic("the store needs a name") // want "panic in library code has no justification comment"
 	}
 
 	return Item{Name: name}
@@ -20,5 +20,5 @@ func Build(name string) Item {
 
 // Halt ends the process of the caller.
 func Halt(code int) {
-	os.Exit(code) // want "os.Exit in library code has no PANICS"
+	os.Exit(code) // want "os.Exit in library code has no justification comment"
 }

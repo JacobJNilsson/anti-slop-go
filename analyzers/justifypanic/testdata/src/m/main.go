@@ -29,7 +29,7 @@ func run(f func()) { f() }
 // A function beside main is library code. Another package cannot import
 // it today, but the reader of this file still stands behind the call.
 func helper(code int) {
-	os.Exit(code) // want "os.Exit in library code has no PANICS justification"
+	os.Exit(code) // want "os.Exit in library code has no justification comment"
 }
 
 func helperJustified() {

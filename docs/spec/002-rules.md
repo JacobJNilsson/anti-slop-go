@@ -1300,13 +1300,13 @@ complete when a project runs this project alone. A project that runs
 `staticcheck` with the equivalent checks names `noerrorassert` in the
 `disable` setting of the plugin, which 003 describes.
 
-## G11 `justifypanic`: require a PANICS comment for panic in library code (opt-in)
+## G11 `justifypanic`: require a comment for panic in library code (opt-in)
 
 A `panic` outside `main`, outside `init`, and outside a test file is an
 API decision. The author of a library stops the process of somebody
 else. The author must state why the process cannot continue, in a
-`// PANICS:` comment directly above the call. `log.Fatal` and `os.Exit`
-in library code get the same treatment.
+comment directly above the call. `log.Fatal` and `os.Exit` in library
+code get the same treatment.
 
 Rejected:
 
@@ -1387,9 +1387,10 @@ line the author justifies.
 ### The justification
 
 The comment follows the justification contract of 003. It owns its
-line, and the marker `PANICS:` starts a line of its text, so
-`NOT-PANICS:` is no justification. The comment ends on the line
-directly above one of these lines:
+line. The rule reads no marker word: any text counts. The examples keep
+`PANICS:` as a convention that a reader can search for, and nothing
+requires it. The comment ends on the line directly above one of these
+lines:
 
 - the line of the call;
 - the line of the innermost statement that holds the call;
@@ -2469,7 +2470,7 @@ the setting therefore show in one repository.
 `reflect.DeepEqual` allowance of a test file. G08 reads the
 assignments of such a package, and it treats a package-level variable
 that the package declares as test infrastructure. G11 asks for no
-`PANICS:` comment there.
+justification comment there.
 
 G12 and G13 read no such package today, and this change makes them
 read it. An entry therefore adds findings for those two rules, and it

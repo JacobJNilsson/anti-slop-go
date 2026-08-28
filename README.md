@@ -37,7 +37,7 @@ turns one on.
 | --- | --- | --- |
 | G03 | `noanyparam` | An `any` parameter outside the exemptions that the specification states. |
 | G09 | `nointerfacereturn` | An interface result where every return statement builds the same concrete type. |
-| G11 | `justifypanic` | A `panic`, an `os.Exit`, or a `log.Fatal` call outside `main`, `init`, and test files, with no `PANICS:` comment above it. |
+| G11 | `justifypanic` | A `panic`, an `os.Exit`, or a `log.Fatal` call outside `main`, `init`, and test files, with no justification comment above it. |
 | G12 | `fullstructcomp` | A test that asserts a value field by field instead of one `cmp.Diff`. |
 | G13 | `errsemantics` | A test that reads the text of an error instead of its identity. |
 
@@ -182,7 +182,7 @@ Twelve points about this file:
   file is a test file, and this one key answers for all five. In a
   named package, `noreflect` (G07) gives the `reflect.DeepEqual`
   allowance of a test file. `nomonkeypatch` (G08) reads the assignments
-  as test code, and `justifypanic` (G11) asks for no `PANICS:` comment.
+  as test code, and `justifypanic` (G11) asks for no justification comment.
   `fullstructcomp` (G12) and `errsemantics` (G13) read no such package
   today, so an entry adds findings for those two. The standalone flags
   are `-noreflect.testpackages`, `-nomonkeypatch.testpackages`,
