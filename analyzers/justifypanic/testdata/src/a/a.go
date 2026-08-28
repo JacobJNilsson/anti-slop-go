@@ -1,6 +1,6 @@
 // Package a holds the fixtures of rule G11 for library code. The
 // package is no main package, and this file is no test file, so every
-// call that stops the process needs a PANICS justification here.
+// call that stops the process needs a justification comment here.
 package a
 
 import (
@@ -15,7 +15,7 @@ type Config struct{ Name string }
 func parse(s string) (Config, error) { return Config{Name: s}, nil }
 
 func Bare() {
-	panic("the store lost its connection") // want "panic in library code has no PANICS justification; state why the process cannot continue in a PANICS: comment directly above it, or return an error to the caller"
+	panic("the store lost its connection") // want "panic in library code has no justification comment; state why the process cannot continue in a comment directly above it, or return an error to the caller"
 }
 
 func Justified() {
@@ -29,7 +29,7 @@ func Justified() {
 func MustParse(s string) Config {
 	c, err := parse(s)
 	if err != nil {
-		panic(err) // want "panic in library code has no PANICS"
+		panic(err) // want "panic in library code has no justification comment"
 	}
 
 	return c
@@ -51,7 +51,7 @@ func MustParseJustified(s string) Config {
 func MarkerAboveTheEnclosingIf(err error) {
 	// PANICS: this comment sits above the if, not above the panic.
 	if err != nil {
-		panic(err) // want "panic in library code has no PANICS"
+		panic(err) // want "panic in library code has no justification comment"
 	}
 }
 
@@ -71,7 +71,7 @@ func MarkerAboveAMultiStatementCaseClause(kind int) {
 	// PANICS: the caller reads the kind from a table of this package.
 	case 1:
 		log.Println("the first statement of the clause is justified")
-		panic("unknown kind") // want "panic in library code has no PANICS"
+		panic("unknown kind") // want "panic in library code has no justification comment"
 	}
 }
 
@@ -81,7 +81,7 @@ func MarkerAboveAMultiStatementCaseClause(kind int) {
 func ErrorText(err error) string { return err.Error() }
 
 func Fatal() {
-	log.Fatal("the disk holds no space") // want "log.Fatal in library code has no PANICS justification"
+	log.Fatal("the disk holds no space") // want "log.Fatal in library code has no justification comment"
 }
 
 // A communication clause holds a statement list too, so the line of the
@@ -95,11 +95,11 @@ func MarkerAboveACommClause(ch chan int) {
 }
 
 func Fatalf(path string, err error) {
-	log.Fatalf("cannot read %s: %v", path, err) // want "log.Fatalf in library code has no PANICS"
+	log.Fatalf("cannot read %s: %v", path, err) // want "log.Fatalf in library code has no justification comment"
 }
 
 func Fatalln() {
-	log.Fatalln("the disk holds no space") // want "log.Fatalln in library code has no PANICS"
+	log.Fatalln("the disk holds no space") // want "log.Fatalln in library code has no justification comment"
 }
 
 func FatalJustified(path string, err error) {
@@ -110,17 +110,17 @@ func FatalJustified(path string, err error) {
 // log.Panicf panics after it writes the line, so it is the shape of the
 // first sentence of the rule.
 func LogPanicf(err error) {
-	log.Panicf("cannot continue: %v", err) // want "log.Panicf in library code has no PANICS"
+	log.Panicf("cannot continue: %v", err) // want "log.Panicf in library code has no justification comment"
 }
 
 func Exit(code int) {
-	os.Exit(code) // want "os.Exit in library code has no PANICS justification"
+	os.Exit(code) // want "os.Exit in library code has no justification comment"
 }
 
 // The report sits at the call and not at the statement. A deferred call
 // starts six columns after its statement starts.
 func DeferredExit(code int) {
-	defer os.Exit(code) // want "os.Exit in library code has no PANICS"
+	defer os.Exit(code) // want "os.Exit in library code has no justification comment"
 }
 
 func ExitJustified() {
@@ -131,7 +131,7 @@ func ExitJustified() {
 // A method of log.Logger calls os.Exit as the package function does,
 // and the type checker resolves both to package log.
 func LoggerMethod(l *log.Logger, err error) {
-	l.Fatalf("cannot continue: %v", err) // want "log.Fatalf in library code has no PANICS"
+	l.Fatalf("cannot continue: %v", err) // want "log.Fatalf in library code has no justification comment"
 }
 
 // Service embeds the logger, so Go promotes the method and the object
@@ -139,7 +139,7 @@ func LoggerMethod(l *log.Logger, err error) {
 type Service struct{ *log.Logger }
 
 func (s Service) Stop() {
-	s.Fatal("stop") // want "log.Fatal in library code has no PANICS"
+	s.Fatal("stop") // want "log.Fatal in library code has no justification comment"
 }
 
 // Reporter is a type of this project. Its Fatalf stops nothing, and the
@@ -210,7 +210,7 @@ func RecoverIntoAField() {
 	defer func() {
 		state.value = recover()
 		if message, ok := state.value.(string); ok {
-			panic(message) // want "panic in library code has no PANICS"
+			panic(message) // want "panic in library code has no justification comment"
 		}
 	}()
 }
@@ -220,7 +220,7 @@ func RecoverIntoAField() {
 func DiscardRecover() {
 	defer func() {
 		_ = recover()
-		panic("the worker cannot continue") // want "panic in library code has no PANICS"
+		panic("the worker cannot continue") // want "panic in library code has no justification comment"
 	}()
 }
 
@@ -228,7 +228,7 @@ func DiscardRecover() {
 func PanicAfterRecover() {
 	defer func() {
 		if r := recover(); r != nil {
-			panic("the wrapper loses the value") // want "panic in library code has no PANICS"
+			panic("the wrapper loses the value") // want "panic in library code has no justification comment"
 		}
 	}()
 }
@@ -238,19 +238,20 @@ func PanicAfterRecover() {
 func RethrowAcrossFunctions() {
 	var r any
 	defer func() { r = recover() }()
-	panic(r) // want "panic in library code has no PANICS"
+	panic(r) // want "panic in library code has no justification comment"
 }
 
 // A package-level value is no result of a recover call.
 var sentinel = "the caller cannot repair this"
 
 func PanicWithASentinel() {
-	panic(sentinel) // want "panic in library code has no PANICS"
+	panic(sentinel) // want "panic in library code has no justification comment"
 }
 
-func MarkerWithAPrefix() {
-	// NOT-PANICS: a hyphen is no line start, so this text is no marker.
-	panic("the store lost its connection") // want "panic in library code has no PANICS"
+func PlainCommentAboveTheCall() {
+	// The store cannot roll back the partial write above. The text
+	// carries no marker word, and the rule accepts it.
+	panic("the store lost its connection")
 }
 
 func MarkerOnTheSecondLineOfAGroup() {
@@ -267,13 +268,13 @@ func MarkerInABlockComment() {
 }
 
 func MarkerBesideTheCode() {
-	panic("x") // PANICS: a trailing comment is not above the call. // want "panic in library code has no PANICS"
+	panic("x") // PANICS: a trailing comment is not above the call. // want "panic in library code has no justification comment"
 }
 
 func BlankLineBelowTheMarker() {
 	// PANICS: a blank line breaks the link to the call.
 
-	panic("the store lost its connection") // want "panic in library code has no PANICS"
+	panic("the store lost its connection") // want "panic in library code has no justification comment"
 }
 
 // A comment above a go statement justifies the statement, and not the
@@ -281,13 +282,15 @@ func BlankLineBelowTheMarker() {
 func PanicInsideAFuncLiteral() {
 	// PANICS: this comment justifies the go statement.
 	go func() {
-		panic("the worker cannot start") // want "panic in library code has no PANICS"
+		panic("the worker cannot start") // want "panic in library code has no justification comment"
 	}()
 }
 
 // A literal at package level sits in no function declaration, so the
-// rule reads it as library code.
-var boom = func() { panic("the table holds no entry") } // want "panic in library code has no PANICS"
+// rule reads it as library code. The blank line keeps this comment from
+// justifying the call.
+
+var boom = func() { panic("the table holds no entry") } // want "panic in library code has no justification comment"
 
 // An init function of any package runs before the program works, and
 // 002 exempts it.
@@ -300,5 +303,5 @@ type starter struct{}
 // A method named init is no init function. The runtime calls no method,
 // so this one is library code.
 func (starter) init() {
-	panic("the starter holds no table") // want "panic in library code has no PANICS"
+	panic("the starter holds no table") // want "panic in library code has no justification comment"
 }

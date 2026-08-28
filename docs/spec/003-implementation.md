@@ -202,7 +202,7 @@ Semantics:
   files. Five rules must decide whether a file is a test file, and this
   one key answers for all five. G07 gives such a package the
   `reflect.DeepEqual` allowance, G08 reads its assignments, and G11
-  asks for no `PANICS:` comment there. G12 and G13 read no such package
+  asks for no justification comment there. G12 and G13 read no such package
   today, so an entry adds findings for those two. A package that serves
   tests and holds no file whose name ends in `_test.go` needs an entry,
   such as a shared suite. 002 states which packages count, with the
@@ -388,13 +388,16 @@ signature rules G03, G04, and G09.
   holds it.
 - The comment owns its line. A comment beside code justifies the code
   beside it, never the line below.
-- A rule with a marker word accepts a comment that carries the marker
-  only: `SAFETY:` (G01), `PANICS:` (G11), and `CONTRACT:` (G03, G04,
-  and G09). The marker starts a line of the comment text. It matches
-  the regular expression `(?m)^[\s*]*<MARKER>\s*:`, on any line of
-  the group. A marker inside a sentence counts for nothing, and so does
-  a marker with a prefix. `NOT-SAFETY:` is no justification.
-- A rule without a marker word accepts any text.
+- G01 and G11 read no marker word. Any text counts. The examples of 002
+  keep `SAFETY:` and `PANICS:` as a convention that a reader can search
+  for, and nothing requires them.
+- G03, G04, and G09 accept a comment that carries the marker
+  `CONTRACT:` only. The doc comment of a declaration sits on the line
+  where a justification would sit, so any text would justify every
+  documented signature. The marker starts a line of the comment text.
+  It matches the regular expression `(?m)^[\s*]*CONTRACT\s*:`, on any
+  line of the group. A marker inside a sentence counts for nothing, and
+  so does a marker with a prefix. `NOT-CONTRACT:` is no justification.
 - The text of the comment must state the invariant, the reason to stop
   the process, or the API that sets the signature. The analyzer cannot
   judge the text; review must.
