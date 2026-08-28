@@ -13,7 +13,7 @@ G03 and G04 share one exemption. The section "The external contract
 exemption", after the last rule, describes it, and both rules point at
 it.
 
-## G01 `safetyassert`: require a SAFETY comment for panicking type assertions (error)
+## G01 `safetyassert`: require a comment for panicking type assertions (error)
 
 A single-result type assertion `v.(T)` panics when the assertion fails.
 The author must state the invariant that makes the panic unreachable.
@@ -42,9 +42,10 @@ if !ok {
 ```
 
 The comment must sit directly above the assertion or above its
-containing statement. The marker `SAFETY:` must start a line of the
-comment text, so `NOT-SAFETY:` is no justification. The full marker
-contract is in 003.
+containing statement, and it must own its line. The rule reads no
+marker word: any text counts. The examples keep `SAFETY:` as a
+convention that a reader can search for, and nothing requires it. The
+full contract is in 003.
 This rule supersedes `forcetypeassert`.
 
 The rule skips generated files. 003 states the header forms the module
@@ -150,7 +151,7 @@ accepts.
 
 Go limits the reach of an `any` parameter. The callee cannot read such
 a value until it asserts a type, and three rules of this set report
-that assertion. G01 asks for a `SAFETY:` comment above a panicking
+that assertion. G01 asks for a justification comment above a panicking
 assertion. G05 reports a value that passes through `any` and comes back
 through an assertion. G06 reports a type switch on an `any` value
 outside a boundary package. A widened parameter therefore leaves
@@ -320,9 +321,9 @@ every one of the 3 is a widening that an assertion takes back.
 report none. `golang.org/x/net` reports 2, in a vendored copy of the
 `encoding/xml` test that std also reports.
 
-A `SAFETY:` comment does not stop a report. G01 accepts the comment,
-and G05 still reports, because the fix is to delete the widening and
-not to justify the assertion. G05 reads no marker comment.
+A justification comment does not stop a report. G01 accepts the
+comment, and G05 still reports, because the fix is to delete the
+widening and not to justify the assertion. G05 reads no comment.
 
 The message names the type that the widening hides and the line of the
 widening. A variable with two widenings takes the first one. The line
@@ -391,7 +392,7 @@ as well, and the fix there is to delete the widening. Where the value is dynamic
 G06 is the domain value.
 
 **The rule reads no single assertion.** `v.(T)` is another shape. G01
-asks for the `SAFETY:` justification of it, and G05 reads the widening
+asks for the justification of it, and G05 reads the widening
 in front of it. G06 reads the guard of a switch, which names no target
 type, and nothing else.
 
@@ -1254,10 +1255,10 @@ A type parameter target, such as `err.(T)` in a generic function, names
 one type at each instantiation. The rule reports it with the message
 for a concrete target.
 
-**No comment stops a report.** G01 asks for a `SAFETY:` comment above a
-single-result assertion. G10 still reports the same assertion, like
-G05, because the fix is `errors.As` and not a justification. The rule
-reads no marker comment. One shape has no `errors.As` form: code that
+**No comment stops a report.** G01 asks for a justification comment
+above a single-result assertion. G10 still reports the same assertion,
+like G05, because the fix is `errors.As` and not a justification. The
+rule reads no comment. One shape has no `errors.As` form: code that
 must read exactly one level of the chain and must not walk it. That
 shape is very rare. Its author can call `errors.Is` or `errors.As` on
 an unwrapped copy of the error, or disable the rule for the project.
