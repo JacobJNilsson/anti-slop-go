@@ -30,7 +30,7 @@ Eight rules run by default.
 | G08 | `nomonkeypatch` | A test that rewires production code: an assignment to a package-level variable, an import of a runtime patching library, or a `//go:linkname` directive. |
 | G10 | `noerrorassert` | A type assertion or a type switch on an `error` value, where `errors.As` answers the question. |
 
-Five rules are opt-in. The `enable` setting of the golangci-lint plugin
+Six rules are opt-in. The `enable` setting of the golangci-lint plugin
 turns one on.
 
 | ID | Rule | Reports |
@@ -40,6 +40,7 @@ turns one on.
 | G11 | `justifypanic` | A `panic`, an `os.Exit`, or a `log.Fatal` call outside `main`, `init`, and test files, with no justification comment above it. |
 | G12 | `fullstructcomp` | A test that asserts a value field by field instead of one `cmp.Diff`. |
 | G13 | `errsemantics` | A test that reads the text of an error instead of its identity. |
+| G14 | `separategotwant` | A test that calls a helper taking the testing value inside an assertion argument, instead of binding got and want first. |
 
 The IDs come from the specification, where the rules stand in the order
 of their writing. Each table therefore skips the IDs of the other.
@@ -121,6 +122,7 @@ linters:
             - justifypanic
             - fullstructcomp
             - errsemantics
+            - separategotwant
           disable:
             - nountypedmap
 ```
@@ -178,16 +180,17 @@ Twelve points about this file:
   standalone flag is `-errsemantics.equality`.
 - `test-packages` names the packages that serve tests and hold no file
   whose name ends in `_test.go`. A shared suite that a `TestMain`
-  function starts is such a package. Five rules must decide whether a
-  file is a test file, and this one key answers for all five. In a
+  function starts is such a package. Six rules must decide whether a
+  file is a test file, and this one key answers for all six. In a
   named package, `noreflect` (G07) gives the `reflect.DeepEqual`
   allowance of a test file. `nomonkeypatch` (G08) reads the assignments
   as test code, and `justifypanic` (G11) asks for no justification comment.
-  `fullstructcomp` (G12) and `errsemantics` (G13) read no such package
-  today, so an entry adds findings for those two. The standalone flags
-  are `-noreflect.testpackages`, `-nomonkeypatch.testpackages`,
-  `-justifypanic.testpackages`, `-fullstructcomp.testpackages`, and
-  `-errsemantics.testpackages`.
+  `fullstructcomp` (G12), `errsemantics` (G13), and `separategotwant`
+  (G14) read no such package today, so an entry adds findings for those
+  three. The standalone flags are `-noreflect.testpackages`,
+  `-nomonkeypatch.testpackages`, `-justifypanic.testpackages`,
+  `-fullstructcomp.testpackages`, `-errsemantics.testpackages`, and
+  `-separategotwant.testpackages`.
 
 Run the new binary with `./custom-gcl run ./...`.
 

@@ -266,7 +266,7 @@ func TestIsTestFile(t *testing.T) {
 
 // The wider test-file test answers for a whole package. A project
 // names a package that serves tests, and every file of it then counts
-// as test code. 002 states which packages count, and five rules read
+// as test code. 002 states which packages count, and six rules read
 // it.
 func TestTestFiles(t *testing.T) {
 	patterns := []string{"example.com/app/internal/suite"}

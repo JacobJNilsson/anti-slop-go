@@ -18,6 +18,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nountypedmap"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/safetyassert"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/separategotwant"
 )
 
 // Analyzers returns every analyzer this module provides, the opt-in
@@ -45,5 +46,6 @@ func Analyzers() []*analysis.Analyzer {
 		justifypanic.Analyzer,      // G11 (opt-in)
 		fullstructcomp.Analyzer,    // G12, opt-in
 		errsemantics.Analyzer,      // G13, opt-in
+		separategotwant.Analyzer,   // G14, opt-in
 	}
 }
