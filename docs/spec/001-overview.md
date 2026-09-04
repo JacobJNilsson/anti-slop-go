@@ -69,7 +69,7 @@ The rule catalogue differs because the type systems differ:
 Go also needs rules with no upstream parent. Errors are values in Go,
 panics are a Go-specific escape hatch, and the Go style guides ask a
 test to compare a whole structure and to assert the identity of an
-error. See rules G10 through G13.
+error. See rules G10 through G14.
 
 ## Related work
 

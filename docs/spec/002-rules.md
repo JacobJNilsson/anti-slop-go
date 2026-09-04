@@ -1,6 +1,6 @@
 # 002: Rule catalogue
 
-Each rule has an identifier (G01-G13), an analyzer name, a default
+Each rule has an identifier (G01-G14), an analyzer name, a default
 severity, and a statement of what it rejects and why. Examples show a
 rejected form and an accepted form.
 
@@ -2357,6 +2357,67 @@ the error value:
   which asks for `require` in the place of `assert`. No checker of that
   linter reads the text of a message.
 
+## G14 `separategotwant`: bind got and want before the assertion (opt-in)
+
+An assertion argument that calls a test helper hides an act inside the
+check. A helper that takes a `testing.TB` value can assert, log, and
+stop the test from inside an expression. The failure then points into
+the helper, and the reader of the comparison cannot see the value that
+arrived. Bind got and want to variables first, then assert.
+
+Rejected:
+
+```go
+require.Equal(t, want, storedRoutes(t, db))
+```
+
+Accepted:
+
+```go
+got := storedRoutes(t, db)
+require.Equal(t, want, got)
+```
+
+The rule flags a call to `cmp.Diff` of go-cmp, and a call to any
+function of the testify `require` and `assert` packages. It reports
+each nested call of a value argument that receives a `testing.TB`
+value. The testing values are a `*testing.T`, a `*testing.B`, a
+`*testing.F`, and the `testing.TB` interface. Such an argument is the
+signature of a helper with hidden control flow.
+
+The `t` that the assertion itself takes as its first argument counts
+for nothing. testify also has a receiver form: `require.New(t)` gives
+a value whose methods take no `t` argument. The rule therefore skips
+argument zero for a package-level function only, and it judges every
+argument of a method call. The variadic message arguments count as
+value arguments, because a message helper that takes a testing value
+can stop the test from inside the expression. A pure builder such as
+`time.Date(...)` takes no `t` and stays legal inline.
+
+A function literal inside an argument is a boundary. The code inside
+the literal runs later, and the bind-first fix does not exist for it,
+so the walk does not enter a function literal. A type conversion names
+no callable, so it earns no report of its own.
+
+Each nested call gets one report, at the call, also where two
+assertions reach it, such as a `cmp.Diff` inside `require.Empty`. The
+rule reads test files only, per "The test-packages setting" below, and
+it is the sixth rule of that setting.
+
+**No comment stops a report.** The fix is always available and costs
+one line: bind the value, then assert. A justification could only
+state convenience, which is no invariant.
+
+**One escape stays open.** A method value such as
+`f := require.Equal` hides the callee, and the rule resolves no
+function for the later call. Such a call escapes the rule, and review
+must catch it.
+
+**Relation to G12.** G12 counts assertions across statements and asks
+for one whole-value comparison. G14 reads the arguments of one
+assertion. A test can violate both, and the fixes compose: bind the
+values, then compare the whole value once.
+
 ## The external contract exemption, shared by G03 and G04
 
 An external API can set the shape of a signature. The author cannot
@@ -2452,11 +2513,11 @@ This repository writes the comment at every entry point it owns. The
 `New(conf any)`. So the analyzers of this module and the golangci-lint
 plugin justify themselves.
 
-## The test-packages setting, shared by G07, G08, G11, G12, and G13
+## The test-packages setting, shared by G07, G08, G11, G12, G13, and G14
 
-Five rules must decide whether a file is a test file or a production
+Six rules must decide whether a file is a test file or a production
 file. The `test-packages` setting states the answer for a whole
-package, and the five rules read one implementation of it.
+package, and the six rules read one implementation of it.
 
 **The test.** A file is a test file when its name ends in `_test.go`.
 It is a test file as well when the import path of its package matches
@@ -2465,13 +2526,13 @@ other package-naming setting takes, and 003 states it.
 `boundary-packages` and `reflect-allow` take the same syntax. The test
 drops a trailing `_test` from the path, so one entry covers a package
 and its external test package. An empty list names no package, which
-is the default of all five rules.
+is the default of all six rules.
 
 **Why the file name is not enough.** A project holds packages that
 serve tests and carry no `_test.go` name. A shared suite that a
 `TestMain` function starts is such a package. The go tool builds it
 like production code, and the file name test therefore reads it as
-production code. The five rules then judge it by the wrong standard.
+production code. The six rules then judge it by the wrong standard.
 
 **The evidence.** An adoption review of the private service measured
 the cost. G11 reports 23 findings there, and 12 of them sit in two
@@ -2491,11 +2552,11 @@ assignments of such a package, and it treats a package-level variable
 that the package declares as test infrastructure. G11 asks for no
 justification comment there.
 
-G12 and G13 read no such package today, and this change makes them
-read it. An entry therefore adds findings for those two rules, and it
-removes findings for the other three. Both directions are the point. A
-helper that asserts field after field, or that reads the text of an
-error, is a test assertion wherever it sits.
+G12, G13, and G14 read no such package today, and this change makes
+them read it. An entry therefore adds findings for those three rules,
+and it removes findings for the other three. Both directions are the
+point. A helper that asserts field after field, or that reads the text
+of an error, is a test assertion wherever it sits.
 
 **One entry names one kind of package.** A package that serves tests
 and holds production code as well loses reports of G07, G08, and G11.
@@ -2504,9 +2565,10 @@ tests alone.
 
 The golangci-lint plugin reads the key `test-packages`. The standalone
 paths read `-noreflect.testpackages`, `-nomonkeypatch.testpackages`,
-`-justifypanic.testpackages`, `-fullstructcomp.testpackages`, and
-`-errsemantics.testpackages`. Each flag takes the patterns as a
-comma-separated list, and a repeated flag adds patterns. 003 states
+`-justifypanic.testpackages`, `-fullstructcomp.testpackages`,
+`-errsemantics.testpackages`, and `-separategotwant.testpackages`.
+Each flag takes the patterns as a comma-separated list, and a repeated
+flag adds patterns. 003 states
 the setting with the other keys.
 
 ## Rules considered and rejected
