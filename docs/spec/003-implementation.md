@@ -30,15 +30,14 @@ anti-slop-go/
   golangci-lint dependency.
 - `internal/signature` holds the machinery that more than one rule
   needs. It holds the generated-file test that every rule applies, and
-  the test-file test that G07, G08, G11, G12, and G13 apply. It holds
-  the justification comment contract and the signature tests that G03,
-  G04, G06, and G09 share. It also holds the type-parameter walk that
-  G05, G06, and G09 share. The sections "The generated-file exemption"
-  and "The justification comment contract" below state those two
-  contracts. 002 states the test-file test in "The test-packages
-  setting". The
-  interface scan of the signature tests has two entry points.
-  `NewContracts` reads the imported packages, and
+  the test-file test that G07, G08, G11, G12, G13, and G14 apply. It
+  holds the justification comment contract and the signature tests that
+  G03, G04, G06, and G09 share. It also holds the type-parameter walk
+  that G05, G06, and G09 share. The sections "The generated-file
+  exemption" and "The justification comment contract" below state those
+  two contracts. 002 states the test-file test in "The test-packages
+  setting". The interface scan of the signature tests has two entry
+  points. `NewContracts` reads the imported packages, and
   `NewContractsWithHome` reads the package under analysis as well. G09
   takes the second one, because a method cannot narrow a result that a
   local interface declares. 002 states both stances with the rules that
@@ -82,13 +81,13 @@ first two take a comma-separated list, and a repeated flag adds
 patterns. The next two take one number each, and the last takes a
 boolean.
 
-Five rules share one setting, and each one carries its own flag for it:
+Six rules share one setting, and each one carries its own flag for it:
 `-noreflect.testpackages`, `-nomonkeypatch.testpackages`,
-`-justifypanic.testpackages`, `-fullstructcomp.testpackages`, and
-`-errsemantics.testpackages`. Every one of the five takes package path
-patterns, in the form the first two flags above take. A flag belongs to
-one analyzer, so the standalone paths need five, and the plugin needs
-one key.
+`-justifypanic.testpackages`, `-fullstructcomp.testpackages`,
+`-errsemantics.testpackages`, and `-separategotwant.testpackages`.
+Every one of the six takes package path patterns, in the form the
+first two flags above take. A flag belongs to one analyzer, so the
+standalone paths need six, and the plugin needs one key.
 
 The settings block is the configuration surface of the plugin.
 golangci-lint gives the block to `New` of the plugin through
@@ -148,7 +147,7 @@ linters:
           fullstructcomp-min: 3     # G12: fields before a report
           fullstructcomp-maxignore: 5   # G12: ignore names a fix may need
           errsemantics-equality: true   # G13
-          test-packages:            # G07, G08, G11, G12, G13
+          test-packages:            # G07, G08, G11, G12, G13, G14
             - "example.com/app/internal/suite"
           disable:
             - noerrorassert         # when staticcheck covers it
@@ -163,10 +162,10 @@ linters:
 Every key of the example exists today: `boundary-packages`,
 `reflect-allow`, `fullstructcomp-min`, `fullstructcomp-maxignore`,
 `errsemantics-equality`, `test-packages`, `enable`, and `disable`.
-`noanyparam` (G03), `nointerfacereturn` (G09),
-`justifypanic` (G11), `fullstructcomp` (G12), and `errsemantics` (G13)
-are the five opt-in rules that `enable` names. The other eight rules
-run by default.
+`noanyparam` (G03), `nointerfacereturn` (G09), `justifypanic` (G11),
+`fullstructcomp` (G12), `errsemantics` (G13), and `separategotwant`
+(G14) are the six opt-in rules that `enable` names. The other eight
+rules run by default.
 
 Semantics:
 
@@ -199,16 +198,16 @@ Semantics:
   setting on the standalone path. The setting changes nothing until
   `enable` names G13, because the rule is opt-in.
 - `test-packages`: package path patterns whose files count as test
-  files. Five rules must decide whether a file is a test file, and this
-  one key answers for all five. G07 gives such a package the
-  `reflect.DeepEqual` allowance, G08 reads its assignments, and G11
-  asks for no justification comment there. G12 and G13 read no such package
-  today, so an entry adds findings for those two. A package that serves
-  tests and holds no file whose name ends in `_test.go` needs an entry,
-  such as a shared suite. 002 states which packages count, with the
-  evidence for it. The plugin gives the patterns to the five
-  constructors, and the standalone paths take the five `testpackages`
-  flags above.
+  files. Six rules must decide whether a file is a test file, and this
+  one key answers for all six. G07 gives such a package the
+  `reflect.DeepEqual` allowance, G08 reads its assignments, and G11 asks
+  for no justification comment there. G12, G13, and G14 read no such
+  package today, so an entry adds findings for those three. A package
+  that serves tests and holds no file whose name ends in `_test.go`
+  needs an entry, such as a shared suite. 002 states which packages
+  count, with the evidence for it. The plugin gives the patterns to the
+  six constructors, and the standalone paths take the six
+  `testpackages` flags above.
 - `enable` / `disable`: rule toggles. Defaults follow the severity
   column in 002. `disable` drops a rule from the default set. `enable`
   turns on an opt-in rule, so it rejects a rule that is on by default.
@@ -226,8 +225,9 @@ because the plugin is the path that reads a configuration file.
 `BuildAnalyzers` drops it until `enable` names it.
 
 `noanyparam` (G03), `nointerfacereturn` (G09), `justifypanic` (G11),
-`fullstructcomp` (G12), and `errsemantics` (G13) are the five opt-in
-rules today. The registry holds 13 rules, so 8 of them run by default.
+`fullstructcomp` (G12), `errsemantics` (G13), and `separategotwant`
+(G14) are the six opt-in rules today. The registry holds 14 rules, so
+8 of them run by default.
 
 The other two paths read no configuration file, so they run every rule.
 Their switch is the flag that `multichecker` and `go vet` give to each
@@ -449,6 +449,7 @@ listed here:
 5. **M5**: opt-in rules `fullstructcomp` (G12), with the
    `fullstructcomp-min` and `fullstructcomp-maxignore` settings, and
    `errsemantics` (G13), with the `errsemantics-equality` setting.
+6. **M6**: opt-in rule `separategotwant` (G14).
 
 ## Open questions
 
