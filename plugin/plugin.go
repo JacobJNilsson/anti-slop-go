@@ -30,6 +30,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nomonkeypatch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/separategotwant"
 )
 
 // name identifies the plugin. golangci-lint needs the same word in the
@@ -52,6 +53,7 @@ var optInRules = map[string]bool{
 	justifypanic.Analyzer.Name:      true, // G11
 	fullstructcomp.Analyzer.Name:    true, // G12
 	errsemantics.Analyzer.Name:      true, // G13
+	separategotwant.Analyzer.Name:   true, // G14
 }
 
 // Settings is the configuration surface of the plugin. golangci-lint
@@ -87,12 +89,12 @@ type Settings struct {
 	FullStructCompMaxIgnore *int `json:"fullstructcomp-maxignore"`
 
 	// TestPackages names the package path patterns whose files count as
-	// test files. Rules G07, G08, G11, G12, and G13 must decide whether
-	// a file is a test file, and this one setting answers for all five.
-	// A package that serves tests and holds no file whose name ends in
-	// _test.go needs an entry, such as a shared suite. 002 states which
-	// packages count, and 003 states the pattern syntax. An empty list
-	// names no such package, which is the default of all five rules.
+	// test files. Rules G07, G08, G11, G12, G13, and G14 must decide
+	// whether a file is a test file, and this one setting answers for all
+	// six. A package that serves tests and holds no file whose name ends
+	// in _test.go needs an entry, such as a shared suite. 002 states
+	// which packages count, and 003 states the pattern syntax. An empty
+	// list names no such package, which is the default of all six rules.
 	TestPackages []string `json:"test-packages"`
 
 	// Equality turns on the equality forms of rule G13. Such a form
@@ -172,6 +174,8 @@ func (p *plugin) configured() []*analysis.Analyzer {
 			all[i] = fullstructcomp.New(p.minFields(), p.maxIgnoreNames(), p.settings.TestPackages)
 		case errsemantics.Analyzer.Name:
 			all[i] = errsemantics.New(p.settings.Equality, p.settings.TestPackages)
+		case separategotwant.Analyzer.Name:
+			all[i] = separategotwant.New(p.settings.TestPackages)
 		}
 	}
 

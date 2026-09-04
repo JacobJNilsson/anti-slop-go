@@ -19,6 +19,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nomonkeypatch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noreflect"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/separategotwant"
 )
 
 // registryNames returns the name of every rule the module provides.
@@ -40,7 +41,7 @@ func defaultNames(t *testing.T) []string {
 
 	names := registryNames(t)
 	if len(optInRules) == 0 {
-		t.Fatal("optInRules is empty; 002 gives rules G03, G09, G11, G12, and G13 an opt-in severity")
+		t.Fatal("optInRules is empty; 002 gives rules G03, G09, G11, G12, G13, and G14 an opt-in severity")
 	}
 	out := make([]string, 0, len(names))
 	for _, n := range names {
@@ -214,7 +215,7 @@ func TestBuildAnalyzersDropsDisabledRules(t *testing.T) {
 }
 
 // The opt-in severity of 002 reaches the golangci-lint path here: the
-// registry holds rules G09, G11, and G13, and a run without the enable
+// registry holds rules G09, G11, G13, and G14, and a run without the enable
 // setting must not apply them. This test runs the real opt-in set, and
 // not the synthetic one of TestSelectAnalyzersOptIn. It checks every
 // opt-in rule, one at a time and all together, so a rule that joins
@@ -272,6 +273,7 @@ func TestOptInRulesNamesTheRulesOfTheSpecification(t *testing.T) {
 		"justifypanic",      // G11
 		"noanyparam",        // G03
 		"nointerfacereturn", // G09
+		"separategotwant",   // G14
 	}
 
 	got := slices.Sorted(maps.Keys(optInRules))
@@ -528,7 +530,7 @@ func TestBuildAnalyzersGivesErrsemanticsItsSetting(t *testing.T) {
 }
 
 // The test-packages setting is the shared configuration surface of the
-// five rules that decide whether a file is a test file. 002 states
+// six rules that decide whether a file is a test file. 002 states
 // which packages count.
 func TestNewDecodesTestPackages(t *testing.T) {
 	patterns := []string{"example.com/app/internal/suite", ".../testsupport"}
@@ -547,8 +549,8 @@ func TestNewDecodesTestPackages(t *testing.T) {
 	}
 }
 
-// One key fans out to five constructors, so the patterns must reach
-// every one of the five rules. Each fixture package below states the
+// One key fans out to six constructors, so the patterns must reach
+// every one of the six rules. Each fixture package below states the
 // behaviour of one rule under the setting. A rule that never received
 // the patterns fails its own case.
 func TestBuildAnalyzersFansTheTestPackagesOutToEveryRule(t *testing.T) {
@@ -558,6 +560,7 @@ func TestBuildAnalyzersFansTheTestPackagesOutToEveryRule(t *testing.T) {
 			justifypanic.Analyzer.Name,
 			fullstructcomp.Analyzer.Name,
 			errsemantics.Analyzer.Name,
+			separategotwant.Analyzer.Name,
 		},
 	})
 	if err != nil {
@@ -573,6 +576,7 @@ func TestBuildAnalyzersFansTheTestPackagesOutToEveryRule(t *testing.T) {
 		{nomonkeypatch.Analyzer.Name, "example.com/app/internal/suitepatch"},
 		{fullstructcomp.Analyzer.Name, "example.com/app/internal/suitecomp"},
 		{errsemantics.Analyzer.Name, "example.com/app/internal/suiteerr"},
+		{separategotwant.Analyzer.Name, "example.com/app/internal/suitegotwant"},
 	}
 	for _, tt := range fixtures {
 		t.Run(tt.rule, func(t *testing.T) {
@@ -597,6 +601,7 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 			justifypanic.Analyzer.Name,
 			fullstructcomp.Analyzer.Name,
 			errsemantics.Analyzer.Name,
+			separategotwant.Analyzer.Name,
 		},
 	})
 	if err != nil {
@@ -621,6 +626,7 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 		{justifypanic.Analyzer, "testpackages", ""},
 		{fullstructcomp.Analyzer, "testpackages", ""},
 		{errsemantics.Analyzer, "testpackages", ""},
+		{separategotwant.Analyzer, "testpackages", ""},
 	}
 	for _, rule := range configurable {
 		t.Run(rule.shared.Name+"."+rule.flag, func(t *testing.T) {

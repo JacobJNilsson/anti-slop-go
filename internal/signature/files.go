@@ -140,8 +140,8 @@ func IsTestPackage(patterns []string, path string) bool {
 // read test files report the wrong thing there. The test-packages
 // setting names the package, and 002 states which packages count.
 //
-// Five rules read this test, so the module holds one answer for one
-// file. 003 states the setting and the five flags.
+// Six rules read this test, so the module holds one answer for one
+// file. 003 states the setting and the flag of each rule.
 func TestFiles(pass *analysis.Pass, testPackages []string) func(pos token.Pos) bool {
 	if IsTestPackage(testPackages, pass.Pkg.Path()) {
 		return func(token.Pos) bool { return true }
