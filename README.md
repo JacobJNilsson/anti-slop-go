@@ -2,10 +2,6 @@
 
 Opinionated `go/analysis` rules that reject low-evidence Go patterns.
 
-This project is a Go companion to [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop).
-The upstream project targets TypeScript and JavaScript through Oxlint.
-This project applies the same philosophy to Go.
-
 ## The idea in one paragraph
 
 Code generators produce code that compiles but carries no evidence.
@@ -80,11 +76,11 @@ destination: .
 plugins:
   - module: github.com/JacobJNilsson/anti-slop-go
     import: github.com/JacobJNilsson/anti-slop-go/plugin
-    version: v1.1.0
+    version: vX.Y.Z
 ```
 
 The `import` line is necessary. The registration lives in the `plugin`
-subpackage, not in the module root. The `version` line takes a tag of
+subpackage, not in the module root. Replace `vX.Y.Z` with a tag of
 this repository. Take the newest one from the
 [tag list](https://github.com/JacobJNilsson/anti-slop-go/tags).
 
@@ -127,75 +123,87 @@ linters:
             - nountypedmap
 ```
 
-Twelve points about this file:
+Run the new binary with `./custom-gcl run ./...`. The plugin is verified
+against golangci-lint v2.10.1. Other v2 releases are untested.
 
-- `type: module` is necessary. Without it, golangci-lint looks for a
-  shared object file.
-- `antislop` joins the standard group of linters, so a configuration
-  that keeps the default `linters.default: standard` runs it without
-  the `linters.enable` entry. The entry becomes necessary when the
-  configuration sets `linters.default: none`. The example keeps it,
-  because it states the intention.
-- All rules arrive as one linter named `antislop`. You select the
-  individual rules with the plugin's own `enable` and `disable`
-  settings, not with `linters.enable`. An unknown rule name in either
-  plugin setting stops the run.
-- `disable` drops a rule from the default set, which holds the eight
-  rules of the first table above. A configuration that disables every
-  rule is legal, and the linter then reports nothing. `enable` turns on
-  an opt-in rule from the second table. A name that is on by default
-  stops the run, because `enable` would do nothing for it.
-- The standalone binary and `go vet -vettool` read none of this file.
-  The section "A first run" states what they read instead.
-- Three settings name packages by path pattern. A pattern matches the
-  whole import path: `*` holds inside one segment, `...` crosses a
-  slash, and a pattern that ends in `/...` names the package above it
-  as well. The standalone binary takes the same patterns in a flag, as
-  a comma-separated list or a repeated flag. An unknown settings key
-  stops the run, so this file names only the keys that a rule reads
-  today.
-- `boundary-packages` names the packages that decode input, which rule
-  `noadhoctypeswitch` (G06) reads. A type switch on an `any` value is
-  the work of such a package, so the rule accepts every one of them
-  there. The standalone flag is `-noadhoctypeswitch.boundary`.
-- `reflect-allow` names the packages that may import `reflect`, which
-  rule `noreflect` (G07) reads. The standalone flag is
-  `-noreflect.allow`.
-- `fullstructcomp-min` names the number of distinct fields of one value
-  that a report of rule `fullstructcomp` (G12) needs. The default is 2.
-  A project that meets the mid-flow checkpoint shape, where each step
-  of a scenario asserts the one field it changed, raises the number.
-  The standalone flag is `-fullstructcomp.min`.
-- `fullstructcomp-maxignore` sets the number of `cmpopts.IgnoreFields`
-  names that a comparison of rule `fullstructcomp` (G12) may need. The
-  rule counts those names. It reports no group above the setting,
-  because such a fix states more than the assertions it replaces. The
-  default is 5. A project that wants every checklist reported sets a
-  high number. The standalone flag is `-fullstructcomp.maxignore`.
-- `errsemantics-equality` is a boolean, and rule `errsemantics` (G13)
-  reads it. It adds a report for a comparison of an error message
-  against a string, such as `err.Error() == "..."` and the
-  `EqualError` assertion of testify. The default is false, because a
-  package that tests its own message text writes that form. The
-  standalone flag is `-errsemantics.equality`.
-- `test-packages` names the packages that serve tests and hold no file
-  whose name ends in `_test.go`. A shared suite that a `TestMain`
-  function starts is such a package. Six rules must decide whether a
-  file is a test file, and this one key answers for all six. In a
-  named package, `noreflect` (G07) gives the `reflect.DeepEqual`
-  allowance of a test file. `nomonkeypatch` (G08) reads the assignments
-  as test code, and `justifypanic` (G11) asks for no justification comment.
-  `fullstructcomp` (G12), `errsemantics` (G13), and `separategotwant`
-  (G14) read no such package today, so an entry adds findings for those
-  three. The standalone flags are `-noreflect.testpackages`,
-  `-nomonkeypatch.testpackages`, `-justifypanic.testpackages`,
-  `-fullstructcomp.testpackages`, `-errsemantics.testpackages`, and
-  `-separategotwant.testpackages`.
+### Select the rules
 
-Run the new binary with `./custom-gcl run ./...`.
+`type: module` is necessary. Without it, golangci-lint looks for a
+shared object file.
 
-Supported golangci-lint versions: the plugin is verified against
-v2.10.1. Other v2 releases are untested.
+All rules arrive as one linter named `antislop`. It joins the standard
+group of linters, so the default `linters.default: standard` runs it
+without a `linters.enable` entry. A configuration that sets
+`linters.default: none` needs the entry.
+
+The plugin selects the individual rules with its own `enable` and
+`disable` settings, not with `linters.enable`:
+
+- `disable` drops a rule from the default set, which is the first table
+  above. A configuration that disables every rule is legal, and the
+  linter then reports nothing.
+- `enable` turns on an opt-in rule from the second table. A rule that is
+  on by default stops the run, because `enable` would do nothing for it.
+- An unknown rule name in either setting stops the run.
+
+### Settings
+
+An unknown settings key stops the run. The standalone binary and
+`go vet -vettool` read none of this file. They take each setting as a
+flag instead.
+
+| Setting | Rule | Default | Standalone flag |
+| --- | --- | --- | --- |
+| `boundary-packages` | G06 `noadhoctypeswitch` | none | `-noadhoctypeswitch.boundary` |
+| `reflect-allow` | G07 `noreflect` | none | `-noreflect.allow` |
+| `fullstructcomp-min` | G12 `fullstructcomp` | 2 | `-fullstructcomp.min` |
+| `fullstructcomp-maxignore` | G12 `fullstructcomp` | 5 | `-fullstructcomp.maxignore` |
+| `errsemantics-equality` | G13 `errsemantics` | false | `-errsemantics.equality` |
+| `test-packages` | G07, G08, G11, G12, G13, G14 | none | `-<rule>.testpackages`, one flag per rule |
+
+`boundary-packages` names the packages that decode input. A type switch
+on an `any` value is the work of such a package, so G06 accepts every
+one of them there.
+
+`reflect-allow` names the packages that may import `reflect`.
+
+`fullstructcomp-min` is the number of distinct fields of one value that
+a G12 report needs. A project that meets the mid-flow checkpoint shape,
+where each step of a scenario asserts the one field it changed, raises
+the number.
+
+`fullstructcomp-maxignore` is the number of `cmpopts.IgnoreFields`
+names that a G12 fix may need. G12 reports no group above the setting,
+because such a fix states more than the assertions it replaces. A
+project that wants every checklist reported sets a high number.
+
+`errsemantics-equality` adds a G13 report for a comparison of an error
+message against a string, such as `err.Error() == "..."` and the
+`EqualError` assertion of testify. It is off by default, because a
+package that tests its own message text writes that form.
+
+`test-packages` names the packages that serve tests and hold no file
+whose name ends in `_test.go`. A shared suite that a `TestMain` function
+starts is such a package. Six rules must decide whether a file is a test
+file, and this key answers for all six:
+
+- G07 gives the `reflect.DeepEqual` allowance of a test file.
+- G08 reads the assignments as test code.
+- G11 asks for no justification comment.
+- G12, G13, and G14 read no such package today, so an entry adds
+  findings for those three.
+
+### Package path patterns
+
+`boundary-packages`, `reflect-allow`, and `test-packages` name packages
+by path pattern. A pattern matches the whole import path:
+
+- `*` matches inside one path segment.
+- `...` crosses a slash.
+- A pattern that ends in `/...` also names the package above it.
+
+A standalone flag takes the patterns as a comma-separated list or as a
+repeated flag.
 
 ## Development
 
@@ -205,6 +213,12 @@ coverage-gate self-test, race-enabled tests behind a statement coverage
 gate (`COVERAGE_MIN`, default 90%), and the build. Read
 [AGENTS.md](AGENTS.md) before your first commit and
 [REVIEW.md](REVIEW.md) before your first pull request.
+
+## Related project
+
+This project is a Go companion to [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop).
+The upstream project targets TypeScript and JavaScript through Oxlint.
+This project applies the same philosophy to Go.
 
 ## License
 
