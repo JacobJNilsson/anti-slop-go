@@ -195,9 +195,7 @@ Twelve points about this file:
 Run the new binary with `./custom-gcl run ./...`.
 
 Supported golangci-lint versions: the plugin is verified against
-v2.10.1. The v2.9 line shares the same plugin register API and the same
-`golang.org/x/tools` requirement, so it works too. Earlier v2 releases
-are untested.
+v2.10.1. Other v2 releases are untested.
 
 ## Development
 
