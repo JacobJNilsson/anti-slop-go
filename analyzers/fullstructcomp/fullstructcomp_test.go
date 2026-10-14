@@ -140,6 +140,18 @@ func TestTestPackagesFlagConfiguresOneInstance(t *testing.T) {
 	}
 }
 
+// The inline path reports a literal of a collection of non-trivial
+// structs. The element path reports indexed accesses of one collection.
+func TestInlineCollection(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.Analyzer, "inline")
+}
+
+// The element path honors the min setting. Two comparisons stay clean
+// at a setting of 3, and three comparisons report.
+func TestElementPathHonorsMin(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.New(3, fullstructcomp.DefaultMaxIgnore, nil), "inlinemin3")
+}
+
 // The package-level analyzer carries every flag, because cmd/antislop
 // registers the analyzers of the module through antislop.Analyzers().
 func TestAnalyzerCarriesTheFlags(t *testing.T) {
