@@ -84,7 +84,15 @@ stands beside it.
 No comment stops a report. Five things stop one: the opt-in severity of
 the rule, the disable setting, the min setting, the maxignore setting,
 and //nolint:antislop on the golangci-lint path. The analyzer skips
-generated files.`
+generated files.
+
+A second report reads a cmp.Diff call with a cmpopts.IgnoreFields
+option. The operands hold one struct type, with or without a pointer.
+The analyzer counts the exported fields of the type that the options
+on that type do not list. A nested name such as "Body.Code" lists no
+top-level field. If one field remains, the diff makes one claim, and
+the report asks for a plain assertion on that field. If no field
+remains, the diff compares nothing.`
 
 // DefaultMin is the number of distinct fields a report needs.
 // docs/spec/002-rules.md states the evidence: a checklist of two
@@ -209,6 +217,7 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 		for _, decl := range file.Decls {
 			if fn, isFunc := decl.(*ast.FuncDecl); isFunc {
 				c.reportRuns(pass, fn)
+				reportOneField(pass, fn)
 			}
 		}
 	}
