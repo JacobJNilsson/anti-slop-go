@@ -161,3 +161,10 @@ func TestAnalyzerCarriesTheFlags(t *testing.T) {
 		}
 	}
 }
+
+// The second report reads a cmp.Diff call whose ignore list leaves one
+// field or none. Package "onefield" holds the rejected calls and the
+// accepted forms.
+func TestOneFieldDiff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), fullstructcomp.Analyzer, "onefield")
+}
