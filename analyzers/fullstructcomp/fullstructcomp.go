@@ -104,6 +104,11 @@ const DefaultMaxIgnore = 5
 // bound, because it descends only where an asserted path leads.
 const maxDepth = 12
 
+// inlineFieldThreshold is the number of exported fields that makes a
+// struct non-trivial by size. A smaller struct needs a nested struct
+// field to be non-trivial.
+const inlineFieldThreshold = 4
+
 // testifyPath is the module the equality family comes from. The
 // analyzer resolves this path and never the name of an import.
 const testifyPath = "github.com/stretchr/testify"
@@ -129,6 +134,11 @@ const (
 	ignoreMessage     = "; cmpopts.IgnoreFields skips a field the test cannot predict"
 	unexportedMessage = "; cmp.Diff panics on the unexported field %s, " +
 		"so the comparison needs cmp.AllowUnexported"
+
+	inlineMessage = "the assertion inlines a %s composite literal; " +
+		"compare with cmp.Diff against a named want value"
+	elementMessage = "assertions compare %s of %s one at a time; " +
+		"compare %s as a whole with cmp.Diff against a want value"
 )
 
 // equalFamily holds the testify assertions that state the equality of
@@ -213,16 +223,24 @@ func (c *config) run(pass *analysis.Pass) (any, error) {
 func (c *config) reportRuns(pass *analysis.Pass, fn *ast.FuncDecl) {
 	info := pass.TypesInfo
 	runs := &runs{byBase: make(map[*types.Var]*run)}
+	elements := &elementRuns{
+		counts: make(map[*types.Var]int),
+		first:  make(map[*types.Var]token.Pos),
+	}
 
 	ast.Inspect(fn, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.CallExpr:
 			if isEqualCall(info, node) {
 				runs.addSite(info, node.Pos(), node.Args)
+				reportInlineCollection(pass, node.Args)
+				elements.addElement(info, node.Pos(), node.Args)
 			}
 		case *ast.IfStmt:
 			if failsTest(info, node.Body) {
-				runs.addSite(info, node.Pos(), comparedOperands(node.Cond))
+				operands := comparedOperands(node.Cond)
+				runs.addSite(info, node.Pos(), operands)
+				elements.addElement(info, node.Pos(), operands)
 			}
 		}
 
@@ -240,6 +258,29 @@ func (c *config) reportRuns(pass *analysis.Pass, fn *ast.FuncDecl) {
 			continue
 		}
 		pass.Reportf(found.first, "%s", message(pass.Pkg, base, found, anchor, at))
+	}
+
+	c.reportElements(pass, elements, cases)
+}
+
+// reportElements reports each collection variable that the sites index
+// at least min times. The element type must be a non-trivial struct.
+// A range variable is a table case and stays clean.
+func (c *config) reportElements(pass *analysis.Pass, elements *elementRuns, cases map[*types.Var]bool) {
+	for _, base := range elements.order {
+		count := elements.counts[base]
+		if cases[base] || count < c.min {
+			continue
+		}
+		elem, isCollection := sliceOrArrayElem(base.Type())
+		if !isCollection || !isNonTrivialStruct(elem) {
+			continue
+		}
+		text := fmt.Sprintf(elementMessage, elementCount(count), base.Name(), base.Name())
+		if field, holds := unexportedField(elem, types.RelativeTo(pass.Pkg)); holds {
+			text += fmt.Sprintf(unexportedMessage, field)
+		}
+		pass.Reportf(elements.first[base], "%s", text)
 	}
 }
 
@@ -327,6 +368,38 @@ func (p *fieldPath) key() string { return strings.Join(p.names, ".") }
 type runs struct {
 	byBase map[*types.Var]*run
 	order  []*types.Var
+}
+
+// elementRuns counts the assertion sites that index each collection
+// variable. Enough sites form an element-by-element comparison.
+type elementRuns struct {
+	counts map[*types.Var]int
+	first  map[*types.Var]token.Pos
+	order  []*types.Var
+}
+
+// addElement records one assertion site that compares two bare indexed
+// accesses. One indexed operand is a spot check and does not count.
+func (e *elementRuns) addElement(info *types.Info, pos token.Pos, operands []ast.Expr) {
+	var bases []*types.Var
+	for _, operand := range operands {
+		if base := indexedBase(info, operand); base != nil {
+			bases = append(bases, base)
+		}
+	}
+	if len(bases) < 2 {
+		return
+	}
+	for i, base := range bases {
+		if slices.Contains(bases[:i], base) {
+			continue
+		}
+		if _, seen := e.counts[base]; !seen {
+			e.first[base] = pos
+			e.order = append(e.order, base)
+		}
+		e.counts[base]++
+	}
 }
 
 // addSite records the fields that one assertion site names. A site that
@@ -438,6 +511,15 @@ func fieldCount(fields int) string {
 	return fmt.Sprintf("%d fields", fields)
 }
 
+// elementCount writes a count of elements in singular or plural form.
+func elementCount(elements int) string {
+	if elements == 1 {
+		return "1 element"
+	}
+
+	return fmt.Sprintf("%d elements", elements)
+}
+
 // baseField returns the variable at the root of a selector chain and
 // the path of fields that the chain names under it. It returns nil for
 // an expression that names no field of a variable.
@@ -468,6 +550,26 @@ func baseField(info *types.Info, expr ast.Expr) (*types.Var, *fieldPath) {
 			return nil, nil
 		}
 	}
+}
+
+// indexedBase returns the variable when expr has the form variable[c],
+// where c is a constant index, with no selector after it. It returns
+// nil for any other form.
+func indexedBase(info *types.Info, expr ast.Expr) *types.Var {
+	idx, isIndex := ast.Unparen(expr).(*ast.IndexExpr)
+	if !isIndex {
+		return nil
+	}
+	ident, isIdent := ast.Unparen(idx.X).(*ast.Ident)
+	if !isIdent {
+		return nil
+	}
+	base, isVar := info.Uses[ident].(*types.Var)
+	if !isVar || info.Types[idx.Index].Value == nil {
+		return nil
+	}
+
+	return base
 }
 
 // selectorPath returns the fields that one selector names. A selector
@@ -912,4 +1014,63 @@ func isBoolean(t types.Type) bool {
 	basic, isBasic := types.Unalias(t).Underlying().(*types.Basic)
 
 	return isBasic && basic.Info()&types.IsBoolean != 0
+}
+
+// isNonTrivialStruct reports whether a type resolves to a struct with
+// an exported field that resolves to a struct, or with at least
+// inlineFieldThreshold exported fields. The nested check stops at an
+// Equal method, so a time.Time field is not a nested struct.
+func isNonTrivialStruct(t types.Type) bool {
+	s := structUnder(t, true)
+	if s == nil {
+		return false
+	}
+	exported := 0
+	for field := range s.Fields() {
+		if !field.Exported() {
+			continue
+		}
+		exported++
+		if structUnder(field.Type(), false) != nil {
+			return true
+		}
+	}
+
+	return exported >= inlineFieldThreshold
+}
+
+// sliceOrArrayElem returns the element type of a slice or array type.
+func sliceOrArrayElem(t types.Type) (types.Type, bool) {
+	switch u := types.Unalias(t).Underlying().(type) {
+	case *types.Slice:
+		return u.Elem(), true
+	case *types.Array:
+		return u.Elem(), true
+	}
+
+	return nil, false
+}
+
+// reportInlineCollection reports the first argument of an equality
+// assertion that is a non-empty literal of a slice or array of
+// non-trivial structs.
+func reportInlineCollection(pass *analysis.Pass, args []ast.Expr) {
+	for _, arg := range args {
+		lit, isLit := ast.Unparen(arg).(*ast.CompositeLit)
+		if !isLit || len(lit.Elts) == 0 {
+			continue
+		}
+		t := pass.TypesInfo.TypeOf(lit)
+		elem, isCollection := sliceOrArrayElem(t)
+		if !isCollection || !isNonTrivialStruct(elem) {
+			continue
+		}
+		text := fmt.Sprintf(inlineMessage, types.TypeString(t, types.RelativeTo(pass.Pkg)))
+		if field, holds := unexportedField(elem, types.RelativeTo(pass.Pkg)); holds {
+			text += fmt.Sprintf(unexportedMessage, field)
+		}
+		pass.Reportf(lit.Pos(), "%s", text)
+
+		return
+	}
 }
