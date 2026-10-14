@@ -2073,6 +2073,140 @@ The rule respects one boundary that the guide states itself. The guide
 compares separate return values one by one. This rule counts the fields
 of one base only, so two results of one call stay apart.
 
+### The collection paths
+
+The field-by-field path reads one assertion at a time, and it groups
+them by the base variable. Two more paths read a collection of structs
+and report the same advice. Both paths share one definition of a
+non-trivial struct, and both share the existing test-file scope, the
+generated-file exclusion, and the `cmp.AllowUnexported` note.
+
+**A non-trivial struct** is a struct that meets one of two conditions.
+The first is nesting: the struct holds at least one exported field
+whose type resolves to a struct. The check unwraps named types,
+pointers, slices, arrays, and maps, and it stops at the `Equal` method
+of cmp. A field `Inner *Inner` or `Tags []Tag` therefore counts as
+nested. A nested struct
+gives a composite literal with nested braces, and the failure output
+of `require.Equal` is hard to read. The second is size: the struct
+holds at least four exported fields. A struct of three scalar fields
+is short enough to read inline.
+
+A collection is a slice or an array. A map stays clean.
+
+**The inline collection path** reads a single call of the equality
+family whose argument is a composite literal of a slice or an array of
+non-trivial structs. Such a literal gives unreadable failure output. One
+`cmp.Diff` against a named want variable gives a structured diff.
+
+Rejected:
+
+```go
+func TestCreate(t *testing.T) {
+    got := fetchItems()
+    require.Equal(t, []Item{
+        {Name: "a", Count: 1, Inner: Inner{Label: "x"}},
+        {Name: "b", Count: 2, Inner: Inner{Label: "y"}},
+    }, got)
+}
+```
+
+Accepted:
+
+```go
+func TestCreate(t *testing.T) {
+    got := fetchItems()
+    want := []Item{
+        {Name: "a", Count: 1, Inner: Inner{Label: "x"}},
+        {Name: "b", Count: 2, Inner: Inner{Label: "y"}},
+    }
+    if diff := cmp.Diff(want, got); diff != "" {
+        t.Errorf("fetchItems() mismatch (-want +got):\n%s", diff)
+    }
+}
+```
+
+The path reads every argument of the call, because the literal can sit
+on either side, and it looks through parentheses. It reports the first
+non-trivial collection literal it finds and moves on. The report sits
+at the literal. The path reads no `if` statement. An empty literal
+carries nothing to diff, so it stays clean. A composite literal of a
+single struct is no collection, so it stays clean as well. A collection
+of trivial structs stays clean, such as structs of two scalar fields.
+
+**The element-by-element path** reads the assertion sites that
+compare indexed elements of the same collection variable. A site is a
+call of the equality family or an `if` statement that fails the test,
+as in the field-by-field path. A site counts only when both compared
+operands are bare indexed accesses. A spot check such as
+`line != table[0]` compares a value with one element, and a diff of the
+whole collection does not state that claim. The rule counts each base
+once per site, so `require.Equal(t, got[0], got[1])` counts one site
+for `got`.
+It reports a base when the count reaches the `min` setting. The report
+sits at the first site of the base. A comparison of `want[0]` with
+`got[0]` names two bases, so the rejected example below gives two
+reports.
+
+Rejected:
+
+```go
+func TestRoundtrip(t *testing.T) {
+    want := buildItems()
+    got := fetchItems()
+    require.Equal(t, want[0], got[0])
+    require.Equal(t, want[1], got[1])
+}
+```
+
+Accepted:
+
+```go
+func TestRoundtrip(t *testing.T) {
+    want := buildItems()
+    got := fetchItems()
+    if diff := cmp.Diff(want, got); diff != "" {
+        t.Errorf("fetchItems() mismatch (-want +got):\n%s", diff)
+    }
+}
+```
+
+The path detects a bare indexed access: an expression of the form
+`variable[index]` with no further selector, index, or pointer. The
+index must be a constant. A loop such as
+`for i := range want { require.Equal(t, want[i], got[i]) }` compares
+every element and stays clean, and so does a second loop over the same
+pair. A spot check of the last element, `got[len(got)-1]`, stays clean
+as well. A
+chain such as `got[0].Name` has a selector, so the field-by-field
+path reads it and this path does not. The two paths are disjoint.
+
+The `min` setting gates this path the same way it gates the
+field-by-field path. The `maxignore` gate does not apply, because
+the fix compares the whole collection and needs no
+`cmpopts.IgnoreFields`. A base that a range clause declares stays
+clean, because it holds a table case.
+
+The element type must be a non-trivial struct. A collection of
+strings or of trivial structs stays clean. The check uses the same
+definition of non-trivial as the inline path.
+
+The table counts the findings of each path. The counts are the same at
+`min` 2 and at `min` 4. The scan ran the standalone binary with
+`-fullstructcomp` over `./...` with Go 1.27.1 on darwin/arm64.
+
+| corpus | inline path | element path |
+| --- | --- | --- |
+| standard library | 0 | 0 |
+| private service | 1 | 0 |
+
+The inline finding in the private service compares a one-element
+literal of a struct with more than four exported fields, a `time.Time`
+field, and an ID that the setup produces. A named want value and a
+diff fit there. The rule of two indexed operands keeps the element
+path clean on a spot check such as the one in
+`debug/dwarf/line_test.go`.
+
 ### Measurement
 
 A scan of the whole standard library, tests included, reports 134
