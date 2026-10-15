@@ -1,0 +1,12 @@
+package a
+
+// shared is a package-level table that another test file of the package
+// reads with a range statement.
+var shared = []item{
+	{
+		name: "shared",
+		a:    1,
+		b:    2,
+		c:    3,
+	}, // want `test case puts 4 keyed fields on one line`
+}
