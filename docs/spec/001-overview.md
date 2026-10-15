@@ -27,8 +27,10 @@ types inside**.
 4. Where a dynamic check is the correct tool, put it in one named
    function with a clear contract.
 
-The rules do not measure style, comment tone, or commit hygiene.
-Other tools cover that ground. See "Related work" below.
+The rules do not measure comment tone or commit hygiene. Other tools
+cover that ground. Layout belongs to formatters. One opt-in rule, G15,
+is the exception. It splits a test table case, because no formatter
+knows which literal is a test case. See "Related work" below.
 
 ## Goals
 
@@ -42,7 +44,8 @@ Other tools cover that ground. See "Related work" below.
 
 - Detection of AI authorship. The rules judge the code, not its author.
 - Surface-pattern checks (narrative comments, hedge words, TODO tone).
-- Formatting, naming conventions beyond the specified rules, or metrics.
+- Formatting and naming conventions beyond the specified rules, or
+  metrics.
 - A general strictness mode for `go vet`-class correctness bugs.
 
 ## Relation to the upstream TypeScript project
@@ -69,7 +72,8 @@ The rule catalogue differs because the type systems differ:
 Go also needs rules with no upstream parent. Errors are values in Go,
 panics are a Go-specific escape hatch, and the Go style guides ask a
 test to compare a whole structure and to assert the identity of an
-error. See rules G10 through G14.
+error. See rules G10 through G14. A test table also needs a layout that
+no formatter enforces. See rule G15.
 
 ## Related work
 
@@ -111,6 +115,11 @@ them here:
   that decides from the words of the message. Enable all three; they do
   not overlap.
 - `staticcheck`, `govet`, `revive`: general correctness and idiom.
+- `golines`, `lll`, and `gofumpt`: line length and layout. `golines`
+  splits a line over a column limit, and `lll` reports one. Neither
+  tool knows which literal is a test case, so a table of cases stays
+  mixed. Rule G15 traces a `range` statement to its table and splits
+  each case. Enable them next to G15. They do not conflict.
 - `depguard`: a deny list of import paths. It covers the plain half of
   rule G07, which is "no package imports `reflect`". G07 keeps its own
   analyzer for the other half: an allowlist of package path patterns,
