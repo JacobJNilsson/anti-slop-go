@@ -1747,6 +1747,94 @@ type stands there, so the fix writes one by hand and pays for it. Only
 standard library gives 72 percent, because its compare helpers walk the
 same paths on both sides.
 
+### The one-field diff
+
+The rule asks for a want value and a diff when a test asserts two
+fields or more. It stays silent on one field. A `cmp.Diff` whose ignore
+list leaves one field makes the claim of one plain assertion in a
+longer form. The rule reports that diff as well, so a test with one
+field to assert uses a plain assertion.
+
+Rejected:
+
+```go
+func TestRefusal(t *testing.T) {
+    var got *ClientError
+    require.True(t, errors.As(err, &got), "the request fails: %v", err)
+    want := &ClientError{StatusCode: http.StatusBadRequest}
+    if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(ClientError{}, "Body")); diff != "" {
+        t.Errorf("refusal mismatch (-want +got):\n%s", diff)
+    }
+}
+```
+
+Accepted:
+
+```go
+func TestRefusal(t *testing.T) {
+    var got *ClientError
+    require.True(t, errors.As(err, &got), "the request fails: %v", err)
+    require.Equal(t, http.StatusBadRequest, got.StatusCode)
+}
+```
+
+**The site.** A `cmp.Diff` call whose two operands hold one struct
+type, after the rule removes one pointer from each. A testify
+equality call takes no cmp option, so it is never a site.
+
+**The count.** The rule counts the exported fields of the type. It
+subtracts each top-level name that a `cmpopts.IgnoreFields` option on
+the same type lists. The option type must be identical to the operand
+type. Two named types with the same fields are different types, and
+cmp applies the option to one of them only. A nested name such as
+`"Body.Code"` drops no top-level field. `cmpopts.IgnoreUnexported` and `cmp.AllowUnexported`
+change nothing, because the count reads exported fields only.
+
+**The report.** One remaining field gives this message:
+
+```text
+cmp.Diff compares only the field StatusCode after cmpopts.IgnoreFields; assert that field with a plain assertion
+```
+
+If no field remains, the diff compares nothing. The report then gives
+this message:
+
+```text
+cmp.Diff compares no field after cmpopts.IgnoreFields; remove the diff or assert the field the test needs with a plain assertion
+```
+
+The report sits at the `cmp.Diff` call. It offers no fix, because the
+message names the field and the plain assertion is one line.
+
+**What stays clean.**
+
+- A diff with no `IgnoreFields` option on the compared type. A want
+  literal that sets one field with no ignore list states the zero value
+  of every other field. That is a claim about the whole value.
+- A type with one exported field that the ignore list keeps. A diff of
+  the whole value has no shorter form.
+- A diff that the rule cannot count. An option list passed with `...`
+  stops the count, and so does an ignore name that is not a constant.
+  A constant name without a dot also stops the count when it names no
+  field that the struct declares itself. That case covers a promoted
+  field, which cmp drops inside the embedded struct, and a misspelled
+  name. The rule does not read options from a package variable or a
+  helper.
+
+An `Equal` method on the type does not stop the report. The report asks
+for a plain assertion on one field and reads no cmp option.
+
+The branch shares the test-file scope, the generated-file exclusion,
+and the severity of the rule. The `min` and `maxignore` settings do not
+apply to it.
+
+**Measurement.** The standard library imports no `cmpopts`, so it gives
+no number. The private service that asked for the branch holds 249
+`cmp.Diff` lines in its tests that name `cmpopts.IgnoreFields`. Only 10
+sites carry an inline `IgnoreFields` option on the compared type. Each
+of them leaves two fields or more, so the branch reports none. A review
+caught the case above by hand before the branch existed.
+
 ### The settings
 
 `-fullstructcomp.min` sets the number of distinct fields that a
