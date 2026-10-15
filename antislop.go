@@ -8,6 +8,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/multilinecase"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyreturn"
@@ -47,5 +48,6 @@ func Analyzers() []*analysis.Analyzer {
 		fullstructcomp.Analyzer,    // G12, opt-in
 		errsemantics.Analyzer,      // G13, opt-in
 		separategotwant.Analyzer,   // G14, opt-in
+		multilinecase.Analyzer,     // G15, opt-in
 	}
 }
