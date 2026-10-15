@@ -26,7 +26,7 @@ Eight rules run by default.
 | G08 | `nomonkeypatch` | A test that rewires production code: an assignment to a package-level variable, an import of a runtime patching library, or a `//go:linkname` directive. |
 | G10 | `noerrorassert` | A type assertion or a type switch on an `error` value, where `errors.As` answers the question. |
 
-Six rules are opt-in. The `enable` setting of the golangci-lint plugin
+Seven rules are opt-in. The `enable` setting of the golangci-lint plugin
 turns one on.
 
 | ID | Rule | Reports |
@@ -37,6 +37,7 @@ turns one on.
 | G12 | `fullstructcomp` | A test that asserts a value field by field instead of one `cmp.Diff`. |
 | G13 | `errsemantics` | A test that reads the text of an error instead of its identity. |
 | G14 | `separategotwant` | A test that calls a helper taking the testing value inside an assertion argument, instead of binding got and want first. |
+| G15 | `multilinecase` | A test case that puts three or more keyed fields on one line. The report carries a fix. |
 
 The IDs come from the specification, where the rules stand in the order
 of their writing. Each table therefore skips the IDs of the other.
@@ -110,6 +111,7 @@ linters:
           fullstructcomp-min: 3
           fullstructcomp-maxignore: 5
           errsemantics-equality: true
+          multilinecase-min: 3
           test-packages:
             - example.com/app/internal/suite
           enable:
@@ -119,6 +121,7 @@ linters:
             - fullstructcomp
             - errsemantics
             - separategotwant
+            - multilinecase
           disable:
             - nountypedmap
 ```
@@ -159,7 +162,8 @@ flag instead.
 | `fullstructcomp-min` | G12 `fullstructcomp` | 2 | `-fullstructcomp.min` |
 | `fullstructcomp-maxignore` | G12 `fullstructcomp` | 5 | `-fullstructcomp.maxignore` |
 | `errsemantics-equality` | G13 `errsemantics` | false | `-errsemantics.equality` |
-| `test-packages` | G07, G08, G11, G12, G13, G14 | none | `-<rule>.testpackages`, one flag per rule |
+| `multilinecase-min` | G15 `multilinecase` | 3 | `-multilinecase.min` |
+| `test-packages` | G07, G08, G11, G12, G13, G14, G15 | none | `-<rule>.testpackages`, one flag per rule |
 
 `boundary-packages` names the packages that decode input. A type switch
 on an `any` value is the work of such a package, so G06 accepts every
@@ -182,16 +186,20 @@ message against a string, such as `err.Error() == "..."` and the
 `EqualError` assertion of testify. It is off by default, because a
 package that tests its own message text writes that form.
 
+`multilinecase-min` is the number of keyed fields of one test case that
+a G15 report needs. A case of two fields reads well on one line, so the
+default is 3.
+
 `test-packages` names the packages that serve tests and hold no file
 whose name ends in `_test.go`. A shared suite that a `TestMain` function
-starts is such a package. Six rules must decide whether a file is a test
-file, and this key answers for all six:
+starts is such a package. Seven rules must decide whether a file is a test
+file, and this key answers for all seven:
 
 - G07 gives the `reflect.DeepEqual` allowance of a test file.
 - G08 reads the assignments as test code.
 - G11 asks for no justification comment.
-- G12, G13, and G14 read no such package today, so an entry adds
-  findings for those three.
+- G12, G13, G14, and G15 read such a package like a test file, so an
+  entry adds findings for those four.
 
 ### Package path patterns
 

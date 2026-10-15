@@ -1,6 +1,6 @@
 # 002: Rule catalogue
 
-Each rule has an identifier (G01-G14), an analyzer name, a default
+Each rule has an identifier (G01-G15), an analyzer name, a default
 severity, and a statement of what it rejects and why. Examples show a
 rejected form and an accepted form.
 
@@ -2640,6 +2640,172 @@ for one whole-value comparison. G14 reads the arguments of one
 assertion. A test can violate both, and the fixes compose: bind the
 values, then compare the whole value once.
 
+## G15 `multilinecase`: put each field of a test case on its own line (opt-in)
+
+A table-driven test lists its cases in one literal. A case that holds
+three fields or more on one line hides the want value in a row of text.
+The reader counts commas to find a field, and a change to one value
+marks the whole case in a diff. With one field per line, the case reads
+from top to bottom, and gofmt aligns the values.
+
+Rejected:
+
+```go
+tests := []struct {
+    name  string
+    query url.Values
+    want  []string
+}{
+    {name: "from", query: url.Values{"from": {"FIN"}}, want: []string{"FIN to DNK", "FIN to SWE"}},
+    {name: "to", query: url.Values{"to": {"DNK"}}, want: []string{"DEU to DNK", "FIN to DNK"}},
+}
+for _, tt := range tests {
+    t.Run(tt.name, func(t *testing.T) {
+        require.Equal(t, tt.want, routeNames(tt.query))
+    })
+}
+```
+
+Accepted:
+
+```go
+tests := []struct {
+    name  string
+    query url.Values
+    want  []string
+}{
+    {
+        name:  "from",
+        query: url.Values{"from": {"FIN"}},
+        want:  []string{"FIN to DNK", "FIN to SWE"},
+    },
+    {
+        name:  "to",
+        query: url.Values{"to": {"DNK"}},
+        want:  []string{"DEU to DNK", "FIN to DNK"},
+    },
+}
+```
+
+### What the rule reads
+
+**The table.** A table is a composite literal of a slice, an array, or
+a map that a `range` statement reads. The rule finds the literal in one
+of two places. The first is the range expression itself, as in
+`for _, tt := range []struct{...}{...}`. The second is the declaration
+of a variable that the range expression names. The declaration is a
+`:=` statement or a `var` declaration, in the function or at package
+level, in a file that the rule reads. The rule reads the initializer of
+that declaration and no later assignment.
+
+The loop body needs no `t.Run` call. A loop that asserts each case
+directly holds the same table. A literal that no `range` statement
+reads is setup data, such as a slice of fixtures passed to a call, and
+the rule leaves it alone.
+
+The rule looks through parentheses around the range expression. A
+selector, an index, a slice expression, and a call name no declaration,
+so the rule reads no table behind them.
+
+**The case.** A case is an element of a slice or array table, or a
+value of a map table. An element with an index key, such as
+`1: {...}`, is a case as well. A case is a composite literal of a
+struct type, also behind the `&` operator. The keys of a map table are
+names, not cases.
+
+**The report.** The rule reports a case that holds at least `min` keyed
+fields when its opening brace and its closing brace sit on one line.
+The report sits at the opening brace:
+
+```text
+test case puts 3 keyed fields on one line; put each field on its own line
+```
+
+A field counts once, whatever its value holds. A nested literal such as
+`url.Values{"from": {"FIN"}}` is one field, and the rule reports no
+literal inside a field value. Each case gets one report, also where two
+loops read one table.
+
+### The fix
+
+Each report carries a suggested fix. The fix puts each keyed field on
+its own line, and it ends each field with a comma. The closing brace
+moves to its own line. The fix leaves the indentation and the alignment
+of the values to gofmt. `golangci-lint run --fix` and the standalone
+`-fix` flag both format each file that they fix.
+
+A case that holds a comment between its braces gets no fix, because
+the edit can move the comment to the wrong field. The report stays.
+
+### The settings
+
+`-multilinecase.min` sets the number of keyed fields that a report
+needs. The `multilinecase-min` setting of the plugin takes the same
+number. The default is **3**. A case of two fields, such as
+`{name: "empty", want: 0}`, reads well on one line. A number of 1, and
+every number below it, reports every keyed case on one line.
+
+The rule reads test files only, per "The test-packages setting" below,
+and it is the seventh rule of that setting. It skips generated files,
+like every rule.
+
+### What the rule leaves alone
+
+- A case that spans several lines, also where one of its lines holds
+  several fields.
+- A case without keys, such as `{"from", url.Values{}, nil}`. The fix
+  needs the keys, and G15 does not add them.
+- A case with fewer than `min` fields, also where a sibling case of the
+  same table spans several lines. A table can therefore stay mixed.
+- A literal inside a field value, and a table that no `range`
+  statement reads.
+
+### Why the rule is opt-in
+
+The rule judges layout. The standard library writes one-line cases
+throughout, and it reports 687 cases in 45 test files at the default.
+The layout is a house style and no Go norm. A project that asks for it
+in review turns the rule on, and the fix ends the remark.
+
+### Why a formatter does not do this
+
+golangci-lint ships `golines`, which splits a line over a column limit.
+A run at 100 columns on the rejected table splits the long case and
+leaves a short case on one line, so the table stays mixed. `golines`
+also splits call arguments before literals, so a short setup call such
+as `makeRoute(t, mkRoute{...})` becomes a call of ten lines. `lll`
+reports the length of a line and carries no fix. `gofumpt` aligns a
+case that is already split, and it splits no case. No one of these
+tools knows which literal is a test case. G15 knows it from the `range`
+statement.
+
+### Measurement
+
+The table counts the reports of G15 at each `min` number. The scan ran
+the standalone binary with `-multilinecase` over `./...` with Go 1.27.1
+on darwin/arm64. The standard library row adds the runs in `GOROOT/src`
+and in `GOROOT/src/cmd`, which is a module of its own.
+
+| corpus | min 3 | min 4 | min 5 | test files at min 3 |
+| --- | --- | --- | --- | --- |
+| standard library | 687 | 308 | 89 | 45 |
+| private service | 62 | 31 | 10 | 7 |
+
+The binary reads the files that the go tool builds for one platform.
+Runs for linux and for windows add the files of those platforms, and
+the three platforms together give 780 reports in 53 test files.
+
+A syntactic scan of every test file found no table that is a map in
+either corpus, and no reported case that holds a comment. A map keyed
+by the case name is the same idiom as a slice of named cases, so the
+rule reads it.
+
+The trace to a `range` statement is the main filter. Before the trace,
+the same scan finds 1372 keyed cases of three fields or more on one
+line in the standard library, and 200 in the private service. In the
+private service, the trace removes mostly slices of fixtures that a
+test passes to a setup call.
+
 ## The external contract exemption, shared by G03 and G04
 
 An external API can set the shape of a signature. The author cannot
@@ -2735,11 +2901,11 @@ This repository writes the comment at every entry point it owns. The
 `New(conf any)`. So the analyzers of this module and the golangci-lint
 plugin justify themselves.
 
-## The test-packages setting, shared by G07, G08, G11, G12, G13, and G14
+## The test-packages setting, shared by G07, G08, G11, G12, G13, G14, and G15
 
-Six rules must decide whether a file is a test file or a production
+Seven rules must decide whether a file is a test file or a production
 file. The `test-packages` setting states the answer for a whole
-package, and the six rules read one implementation of it.
+package, and the seven rules read one implementation of it.
 
 **The test.** A file is a test file when its name ends in `_test.go`.
 It is a test file as well when the import path of its package matches
@@ -2748,13 +2914,13 @@ other package-naming setting takes, and 003 states it.
 `boundary-packages` and `reflect-allow` take the same syntax. The test
 drops a trailing `_test` from the path, so one entry covers a package
 and its external test package. An empty list names no package, which
-is the default of all six rules.
+is the default of all seven rules.
 
 **Why the file name is not enough.** A project holds packages that
 serve tests and carry no `_test.go` name. A shared suite that a
 `TestMain` function starts is such a package. The go tool builds it
 like production code, and the file name test therefore reads it as
-production code. The six rules then judge it by the wrong standard.
+production code. The seven rules then judge it by the wrong standard.
 
 **The evidence.** An adoption review of the private service measured
 the cost. G11 reports 23 findings there, and 12 of them sit in two
@@ -2774,11 +2940,12 @@ assignments of such a package, and it treats a package-level variable
 that the package declares as test infrastructure. G11 asks for no
 justification comment there.
 
-G12, G13, and G14 read no such package today, and this change makes
-them read it. An entry therefore adds findings for those three rules,
-and it removes findings for the other three. Both directions are the
-point. A helper that asserts field after field, or that reads the text
-of an error, is a test assertion wherever it sits.
+G12, G13, G14, and G15 read such a package like a test file. An entry
+therefore adds findings for those four rules, and it removes findings
+for the other three. Both directions are the point. A helper that
+asserts field after field, or that reads the text of an error, is a
+test assertion wherever it sits. A table of cases in such a package is
+a test table.
 
 **One entry names one kind of package.** A package that serves tests
 and holds production code as well loses reports of G07, G08, and G11.
@@ -2788,10 +2955,10 @@ tests alone.
 The golangci-lint plugin reads the key `test-packages`. The standalone
 paths read `-noreflect.testpackages`, `-nomonkeypatch.testpackages`,
 `-justifypanic.testpackages`, `-fullstructcomp.testpackages`,
-`-errsemantics.testpackages`, and `-separategotwant.testpackages`.
-Each flag takes the patterns as a comma-separated list, and a repeated
-flag adds patterns. 003 states
-the setting with the other keys.
+`-errsemantics.testpackages`, `-separategotwant.testpackages`, and
+`-multilinecase.testpackages`. Each flag takes the patterns as a
+comma-separated list, and a repeated flag adds patterns. 003 states the
+setting with the other keys.
 
 ## Rules considered and rejected
 

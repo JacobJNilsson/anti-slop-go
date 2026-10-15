@@ -25,6 +25,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/multilinecase"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nointerfacereturn"
@@ -54,6 +55,7 @@ var optInRules = map[string]bool{
 	fullstructcomp.Analyzer.Name:    true, // G12
 	errsemantics.Analyzer.Name:      true, // G13
 	separategotwant.Analyzer.Name:   true, // G14
+	multilinecase.Analyzer.Name:     true, // G15
 }
 
 // Settings is the configuration surface of the plugin. golangci-lint
@@ -88,13 +90,21 @@ type Settings struct {
 	// whose fix carries no ignore name at all.
 	FullStructCompMaxIgnore *int `json:"fullstructcomp-maxignore"`
 
+	// MultilineCaseMin states the number of keyed fields of one test case
+	// that a report of rule G15 needs. The key takes an integer. An
+	// absent key gives multilinecase.DefaultMin, so the field is a
+	// pointer for the reason the keys above are: zero is a setting of its
+	// own.
+	MultilineCaseMin *int `json:"multilinecase-min"`
+
 	// TestPackages names the package path patterns whose files count as
-	// test files. Rules G07, G08, G11, G12, G13, and G14 must decide
+	// test files. Rules G07, G08, G11, G12, G13, G14, and G15 must decide
 	// whether a file is a test file, and this one setting answers for all
-	// six. A package that serves tests and holds no file whose name ends
-	// in _test.go needs an entry, such as a shared suite. 002 states
+	// seven. A package that serves tests and holds no file whose name
+	// ends in _test.go needs an entry, such as a shared suite. 002 states
 	// which packages count, and 003 states the pattern syntax. An empty
-	// list names no such package, which is the default of all six rules.
+	// list names no such package, which is the default of all seven
+	// rules.
 	TestPackages []string `json:"test-packages"`
 
 	// Equality turns on the equality forms of rule G13. Such a form
@@ -176,6 +186,8 @@ func (p *plugin) configured() []*analysis.Analyzer {
 			all[i] = errsemantics.New(p.settings.Equality, p.settings.TestPackages)
 		case separategotwant.Analyzer.Name:
 			all[i] = separategotwant.New(p.settings.TestPackages)
+		case multilinecase.Analyzer.Name:
+			all[i] = multilinecase.New(p.caseMinFields(), p.settings.TestPackages)
 		}
 	}
 
@@ -190,6 +202,16 @@ func (p *plugin) minFields() int {
 	}
 
 	return *p.settings.FullStructCompMin
+}
+
+// caseMinFields returns the setting of rule G15. A configuration that
+// names no number gets the default of the rule.
+func (p *plugin) caseMinFields() int {
+	if p.settings.MultilineCaseMin == nil {
+		return multilinecase.DefaultMin
+	}
+
+	return *p.settings.MultilineCaseMin
 }
 
 // maxIgnoreNames returns the cost gate of rule G12. A configuration

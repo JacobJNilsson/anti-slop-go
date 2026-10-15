@@ -15,6 +15,7 @@ import (
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/errsemantics"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/fullstructcomp"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/justifypanic"
+	"github.com/JacobJNilsson/anti-slop-go/analyzers/multilinecase"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noadhoctypeswitch"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/noanyparam"
 	"github.com/JacobJNilsson/anti-slop-go/analyzers/nomonkeypatch"
@@ -41,7 +42,7 @@ func defaultNames(t *testing.T) []string {
 
 	names := registryNames(t)
 	if len(optInRules) == 0 {
-		t.Fatal("optInRules is empty; 002 gives rules G03, G09, G11, G12, G13, and G14 an opt-in severity")
+		t.Fatal("optInRules is empty; 002 gives rules G03, G09, G11, G12, G13, G14, and G15 an opt-in severity")
 	}
 	out := make([]string, 0, len(names))
 	for _, n := range names {
@@ -271,6 +272,7 @@ func TestOptInRulesNamesTheRulesOfTheSpecification(t *testing.T) {
 		"errsemantics",      // G13
 		"fullstructcomp",    // G12
 		"justifypanic",      // G11
+		"multilinecase",     // G15
 		"noanyparam",        // G03
 		"nointerfacereturn", // G09
 		"separategotwant",   // G14
@@ -530,7 +532,7 @@ func TestBuildAnalyzersGivesErrsemanticsItsSetting(t *testing.T) {
 }
 
 // The test-packages setting is the shared configuration surface of the
-// six rules that decide whether a file is a test file. 002 states
+// seven rules that decide whether a file is a test file. 002 states
 // which packages count.
 func TestNewDecodesTestPackages(t *testing.T) {
 	patterns := []string{"example.com/app/internal/suite", ".../testsupport"}
@@ -549,8 +551,8 @@ func TestNewDecodesTestPackages(t *testing.T) {
 	}
 }
 
-// One key fans out to six constructors, so the patterns must reach
-// every one of the six rules. Each fixture package below states the
+// One key fans out to seven constructors, so the patterns must reach
+// every one of the seven rules. Each fixture package below states the
 // behaviour of one rule under the setting. A rule that never received
 // the patterns fails its own case.
 func TestBuildAnalyzersFansTheTestPackagesOutToEveryRule(t *testing.T) {
@@ -561,6 +563,7 @@ func TestBuildAnalyzersFansTheTestPackagesOutToEveryRule(t *testing.T) {
 			fullstructcomp.Analyzer.Name,
 			errsemantics.Analyzer.Name,
 			separategotwant.Analyzer.Name,
+			multilinecase.Analyzer.Name,
 		},
 	})
 	if err != nil {
@@ -577,6 +580,7 @@ func TestBuildAnalyzersFansTheTestPackagesOutToEveryRule(t *testing.T) {
 		{fullstructcomp.Analyzer.Name, "example.com/app/internal/suitecomp"},
 		{errsemantics.Analyzer.Name, "example.com/app/internal/suiteerr"},
 		{separategotwant.Analyzer.Name, "example.com/app/internal/suitegotwant"},
+		{multilinecase.Analyzer.Name, "example.com/app/internal/suitemulti"},
 	}
 	for _, tt := range fixtures {
 		t.Run(tt.rule, func(t *testing.T) {
@@ -596,12 +600,14 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 		"fullstructcomp-min":       3,
 		"fullstructcomp-maxignore": 20,
 		"errsemantics-equality":    true,
+		"multilinecase-min":        4,
 		"test-packages":            []any{"example.com/app/internal/suite*"},
 		"enable": []any{
 			justifypanic.Analyzer.Name,
 			fullstructcomp.Analyzer.Name,
 			errsemantics.Analyzer.Name,
 			separategotwant.Analyzer.Name,
+			multilinecase.Analyzer.Name,
 		},
 	})
 	if err != nil {
@@ -621,12 +627,14 @@ func TestBuildAnalyzersLeavesTheSharedAnalyzersAlone(t *testing.T) {
 		{fullstructcomp.Analyzer, "min", strconv.Itoa(fullstructcomp.DefaultMin)},
 		{fullstructcomp.Analyzer, "maxignore", strconv.Itoa(fullstructcomp.DefaultMaxIgnore)},
 		{errsemantics.Analyzer, "equality", "false"},
+		{multilinecase.Analyzer, "min", strconv.Itoa(multilinecase.DefaultMin)},
 		{noreflect.Analyzer, "testpackages", ""},
 		{nomonkeypatch.Analyzer, "testpackages", ""},
 		{justifypanic.Analyzer, "testpackages", ""},
 		{fullstructcomp.Analyzer, "testpackages", ""},
 		{errsemantics.Analyzer, "testpackages", ""},
 		{separategotwant.Analyzer, "testpackages", ""},
+		{multilinecase.Analyzer, "testpackages", ""},
 	}
 	for _, rule := range configurable {
 		t.Run(rule.shared.Name+"."+rule.flag, func(t *testing.T) {
@@ -762,4 +770,58 @@ func TestBuildAnalyzersGivesFullstructcompItsMaxIgnore(t *testing.T) {
 
 	configured := byName(t, built, fullstructcomp.Analyzer.Name)
 	analysistest.Run(t, analysistest.TestData(), configured, "structignore")
+}
+
+// The multilinecase-min setting is the configuration surface of rule
+// G15 on the golangci-lint path.
+func TestNewDecodesMultilineCaseMin(t *testing.T) {
+	p, err := New(map[string]any{"multilinecase-min": 4})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if got.settings.MultilineCaseMin == nil {
+		t.Fatal("multilinecase-min = none; want the number the settings hold")
+	}
+	if *got.settings.MultilineCaseMin != 4 {
+		t.Errorf("multilinecase-min = %d; want 4", *got.settings.MultilineCaseMin)
+	}
+}
+
+// A configuration that names no number gets the default of the rule.
+// The field is a pointer for this reason: an integer field would read
+// an absent key as zero, and zero is a setting of its own.
+func TestBuildAnalyzersDefaultsTheCaseMinimum(t *testing.T) {
+	p, err := New(map[string]any{})
+	if err != nil {
+		t.Fatalf("New returned an unexpected error: %v", err)
+	}
+
+	got, ok := p.(*plugin)
+	if !ok {
+		t.Fatalf("New returned %T; want the plugin of this package", p)
+	}
+	if min := got.caseMinFields(); min != multilinecase.DefaultMin {
+		t.Errorf("min = %d; want the default %d of the rule", min, multilinecase.DefaultMin)
+	}
+}
+
+// The number must reach the analyzer, so this test runs the analyzer
+// that BuildAnalyzers returned. The fixture holds a case of three
+// fields and a case of four, so one run tests both directions.
+func TestBuildAnalyzersGivesMultilinecaseItsMinimum(t *testing.T) {
+	built, err := build(t, map[string]any{
+		"multilinecase-min": 4,
+		"enable":            []any{multilinecase.Analyzer.Name},
+	})
+	if err != nil {
+		t.Fatalf("BuildAnalyzers returned an unexpected error: %v", err)
+	}
+
+	configured := byName(t, built, multilinecase.Analyzer.Name)
+	analysistest.Run(t, analysistest.TestData(), configured, "multimin")
 }
